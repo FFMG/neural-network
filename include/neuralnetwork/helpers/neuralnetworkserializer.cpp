@@ -1290,6 +1290,30 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
   auto b_decays = layer_object.get<std::vector<double>>("b-decays");
   double momentum = layer_object.get_or<double>("momentum", 0.0);
 
+  const bool use_layer_normalisation = layer_object.get_or<bool>("use-layer-normalisation", false);
+  std::vector<double> ln_gain_values, ln_gain_grads, ln_gain_velocities, ln_gain_m1, ln_gain_m2, ln_gain_decays;
+  std::vector<long long> ln_gain_timesteps;
+  std::vector<double> ln_bias_values, ln_bias_grads, ln_bias_velocities, ln_bias_m1, ln_bias_m2, ln_bias_decays;
+  std::vector<long long> ln_bias_timesteps;
+  if (use_layer_normalisation)
+  {
+    ln_gain_values = layer_object.get<std::vector<double>>("ln-gain-values");
+    ln_gain_grads = layer_object.get<std::vector<double>>("ln-gain-grads");
+    ln_gain_velocities = layer_object.get<std::vector<double>>("ln-gain-velocities");
+    ln_gain_m1 = layer_object.get<std::vector<double>>("ln-gain-m1");
+    ln_gain_m2 = layer_object.get<std::vector<double>>("ln-gain-m2");
+    ln_gain_timesteps = layer_object.get<std::vector<long long>>("ln-gain-timesteps");
+    ln_gain_decays = layer_object.get<std::vector<double>>("ln-gain-decays");
+
+    ln_bias_values = layer_object.get<std::vector<double>>("ln-bias-values");
+    ln_bias_grads = layer_object.get<std::vector<double>>("ln-bias-grads");
+    ln_bias_velocities = layer_object.get<std::vector<double>>("ln-bias-velocities");
+    ln_bias_m1 = layer_object.get<std::vector<double>>("ln-bias-m1");
+    ln_bias_m2 = layer_object.get<std::vector<double>>("ln-bias-m2");
+    ln_bias_timesteps = layer_object.get<std::vector<long long>>("ln-bias-timesteps");
+    ln_bias_decays = layer_object.get<std::vector<double>>("ln-bias-decays");
+  }
+
   std::unique_ptr<ResidualProjector> residual_projector(get_residual_projector(layer_object));
 
   auto layer = std::make_unique<FFLayer>(
@@ -1314,6 +1338,21 @@ std::unique_ptr<Layer> NeuralNetworkSerializer::create_fflayer(
     b_m2,
     b_timesteps,
     b_decays,
+    use_layer_normalisation,
+    ln_gain_values,
+    ln_gain_grads,
+    ln_gain_velocities,
+    ln_gain_m1,
+    ln_gain_m2,
+    ln_gain_timesteps,
+    ln_gain_decays,
+    ln_bias_values,
+    ln_bias_grads,
+    ln_bias_velocities,
+    ln_bias_m1,
+    ln_bias_m2,
+    ln_bias_timesteps,
+    ln_bias_decays,
     residual_projector.get(),
     number_of_threads,
     lah,
@@ -2627,6 +2666,27 @@ void NeuralNetworkSerializer::add_fflayer(const FFLayer& layer, TinyJSON::TJValu
   set_floats(layer_object, "b-decays", layer.get_b_decays());
 
   set_float(layer_object, "momentum", layer.get_momentum());
+
+  // LayerNorm (applied to pre-activations)
+  layer_object->set_boolean("use-layer-normalisation", layer.get_use_layer_normalisation());
+  if (layer.get_use_layer_normalisation())
+  {
+    set_floats(layer_object, "ln-gain-values", layer.get_ln_gain_values());
+    set_floats(layer_object, "ln-gain-grads", layer.get_ln_gain_grads());
+    set_floats(layer_object, "ln-gain-velocities", layer.get_ln_gain_velocities());
+    set_floats(layer_object, "ln-gain-m1", layer.get_ln_gain_m1());
+    set_floats(layer_object, "ln-gain-m2", layer.get_ln_gain_m2());
+    layer_object->set_numbers("ln-gain-timesteps", layer.get_ln_gain_timesteps());
+    set_floats(layer_object, "ln-gain-decays", layer.get_ln_gain_decays());
+
+    set_floats(layer_object, "ln-bias-values", layer.get_ln_bias_values());
+    set_floats(layer_object, "ln-bias-grads", layer.get_ln_bias_grads());
+    set_floats(layer_object, "ln-bias-velocities", layer.get_ln_bias_velocities());
+    set_floats(layer_object, "ln-bias-m1", layer.get_ln_bias_m1());
+    set_floats(layer_object, "ln-bias-m2", layer.get_ln_bias_m2());
+    layer_object->set_numbers("ln-bias-timesteps", layer.get_ln_bias_timesteps());
+    set_floats(layer_object, "ln-bias-decays", layer.get_ln_bias_decays());
+  }
 
   auto residual_projector = add_residual_projector(layer.get_residual_projector());
   if (residual_projector != nullptr)
@@ -3964,6 +4024,14 @@ void NeuralNetworkSerializer::load_weights(Layer& layer, const TinyJSON::TJValue
     if (layer_object.has_key("b-skip-values")) grn_layer->set_b_skip_values(layer_object.get<std::vector<double>>("b-skip-values"));
     if (layer_object.has_key("ln-gain-values")) grn_layer->set_ln_gain_values(layer_object.get<std::vector<double>>("ln-gain-values"));
     if (layer_object.has_key("ln-bias-values")) grn_layer->set_ln_bias_values(layer_object.get<std::vector<double>>("ln-bias-values"));
+  }
+
+  // FFLayer specific weights
+  auto* fflayer = dynamic_cast<FFLayer*>(&layer);
+  if (fflayer && fflayer->get_use_layer_normalisation())
+  {
+    if (layer_object.has_key("ln-gain-values")) fflayer->set_ln_gain_values(layer_object.get<std::vector<double>>("ln-gain-values"));
+    if (layer_object.has_key("ln-bias-values")) fflayer->set_ln_bias_values(layer_object.get<std::vector<double>>("ln-bias-values"));
   }
 
   // Residual projector

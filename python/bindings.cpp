@@ -222,9 +222,9 @@ PYBIND11_MODULE(neuralnetwork, m) {
         .def_property_readonly("vocabulary_size", &LayerDetails::get_vocabulary_size)
         .def_property_readonly("embedding_dimension", &LayerDetails::get_embedding_dimension)
         .def_property_readonly("is_recurrent", &LayerDetails::is_recurrent)
-        .def_static("create_ff", [](unsigned size, const activation& act, double dropout, double weight_decay, OptimiserType opt, double momentum) {
-            return LayerDetails(Layer::Architecture::FF, size, act, dropout, weight_decay, opt, momentum, false, 0, 0, 0, 0, 0, 0, 0);
-        }, py::arg("size"), py::arg("activation"), py::arg("dropout") = 0.0, py::arg("weight_decay") = 0.0, py::arg("optimiser_type") = OptimiserType::None, py::arg("momentum") = 0.0)
+        .def_static("create_ff", [](unsigned size, const activation& act, double dropout, double weight_decay, OptimiserType opt, double momentum, bool use_layer_norm) {
+            return LayerDetails(Layer::Architecture::FF, size, act, dropout, weight_decay, opt, momentum, use_layer_norm, 0, 0, 0, 0, 0, 0, 0);
+        }, py::arg("size"), py::arg("activation"), py::arg("dropout") = 0.0, py::arg("weight_decay") = 0.0, py::arg("optimiser_type") = OptimiserType::None, py::arg("momentum") = 0.0, py::arg("use_layer_normalisation") = false)
         .def_static("create_elman", [](unsigned size, const activation& act, double dropout, double weight_decay, OptimiserType opt, double momentum) {
             return LayerDetails(Layer::Architecture::Elman, size, act, dropout, weight_decay, opt, momentum, false, 0, 0, 0, 0, 0, 0, 0);
         }, py::arg("size"), py::arg("activation"), py::arg("dropout") = 0.0, py::arg("weight_decay") = 0.0, py::arg("optimiser_type") = OptimiserType::None, py::arg("momentum") = 0.0)

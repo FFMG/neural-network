@@ -343,3 +343,92 @@ TEST_F(FFLayerMTTest, MediumWorkloadParallelExecutionVerification)
         }
     }
 }
+
+namespace
+{
+struct layer_norm_mt_scenario
+{
+  unsigned num_inputs;
+  unsigned num_neurons;
+  unsigned batch_size;
+  bool use_output_gradients;
+};
+
+void run_layer_norm_backward(FFLayer& layer, const layer_norm_mt_scenario& scenario)
+{
+  MockLayer prev_layer(0, scenario.num_inputs);
+  MockLayer next_layer(2, scenario.num_neurons);
+  std::vector<double> identity(static_cast<size_t>(scenario.num_neurons) * scenario.num_neurons, 0.0);
+  for (size_t j = 0; j < scenario.num_neurons; ++j)
+  {
+    identity[j * scenario.num_neurons + j] = 1.0;
+  }
+  next_layer.set_w_values(identity);
+
+  std::vector<unsigned> topology = { scenario.num_inputs, scenario.num_neurons, scenario.num_neurons };
+  auto batch_go = create_batch_gradients_and_outputs(topology, scenario.batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, scenario.batch_size, 1, FFLayer::LayerNormMultiplier);
+
+  std::vector<std::vector<double>> batch_next_grads(scenario.batch_size, std::vector<double>(scenario.num_neurons));
+  for (size_t b = 0; b < scenario.batch_size; ++b)
+  {
+    std::vector<double> inputs(scenario.num_inputs);
+    for (size_t i = 0; i < inputs.size(); ++i)
+    {
+      inputs[i] = std::cos(static_cast<double>(b * i + b));
+    }
+    batch_go[b].set_outputs(0, inputs);
+    for (size_t j = 0; j < scenario.num_neurons; ++j)
+    {
+      batch_next_grads[b][j] = std::sin(static_cast<double>(b + j));
+    }
+  }
+
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, scenario.batch_size, true);
+  if (scenario.use_output_gradients)
+  {
+    layer.calculate_hidden_gradients_from_output_gradients(batch_go, batch_next_grads, batch_hs, scenario.batch_size, 0);
+  }
+  else
+  {
+    layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, scenario.batch_size, 0);
+  }
+}
+
+void expect_layer_norm_mt_consistency(const layer_norm_mt_scenario& scenario)
+{
+  FFLayer layer_st(1, scenario.num_inputs, scenario.num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true, std::nullopt);
+  FFLayer layer_mt(1, scenario.num_inputs, scenario.num_neurons, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, get_test_threads(), true, 0.0, true, std::nullopt);
+
+  std::vector<double> weights(static_cast<size_t>(scenario.num_inputs) * scenario.num_neurons);
+  for (size_t i = 0; i < weights.size(); ++i)
+  {
+    weights[i] = std::sin(static_cast<double>(i));
+  }
+  layer_st.set_w_values(weights);
+  layer_mt.set_w_values(weights);
+
+  run_layer_norm_backward(layer_st, scenario);
+  run_layer_norm_backward(layer_mt, scenario);
+
+  double gain_grad_magnitude = 0.0;
+  for (size_t j = 0; j < scenario.num_neurons; ++j)
+  {
+    EXPECT_NEAR(layer_st.get_ln_gain_grads()[j], layer_mt.get_ln_gain_grads()[j], 1e-9) << "gain index " << j;
+    EXPECT_NEAR(layer_st.get_ln_bias_grads()[j], layer_mt.get_ln_bias_grads()[j], 1e-9) << "bias index " << j;
+    gain_grad_magnitude += std::abs(layer_st.get_ln_gain_grads()[j]);
+  }
+  EXPECT_GT(gain_grad_magnitude, 0.0);
+}
+}
+
+TEST_F(FFLayerMTTest, LayerNormHiddenGradientsMTConsistency)
+{
+  expect_layer_norm_mt_consistency({ 16, 32, 256, false });
+}
+
+TEST_F(FFLayerMTTest, LayerNormOutputGradientsMTConsistency)
+{
+  // Large enough for calculate_hidden_gradients_from_output_gradients to go multi-threaded.
+  expect_layer_norm_mt_consistency({ 4, 64, 2048, true });
+}

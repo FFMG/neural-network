@@ -2937,16 +2937,16 @@ TEST(NetworkIntegrationTest, VersionConstantsAndClassGetters)
 {
   EXPECT_EQ(NEURALNETWORK_VERSION_MAJOR, 0);
   EXPECT_EQ(NEURALNETWORK_VERSION_MINOR, 0);
-  EXPECT_EQ(NEURALNETWORK_VERSION_PATCH, 72);
-  EXPECT_STREQ(NEURALNETWORK_VERSION_STRING, "0.0.72");
-  EXPECT_EQ(NEURALNETWORK_VERSION_CODE, ((0 << 16) | (0 << 8) | 72));
+  EXPECT_EQ(NEURALNETWORK_VERSION_PATCH, 73);
+  EXPECT_STREQ(NEURALNETWORK_VERSION_STRING, "0.0.73");
+  EXPECT_EQ(NEURALNETWORK_VERSION_CODE, ((0 << 16) | (0 << 8) | 73));
 
   EXPECT_EQ(Version::major(), 0u);
   EXPECT_EQ(Version::minor(), 0u);
-  EXPECT_EQ(Version::patch(), 72u);
-  EXPECT_EQ(Version::code(), 72u);
-  EXPECT_STREQ(Version::string(), "0.0.72");
-  EXPECT_STREQ(NeuralNetwork::version(), "0.0.72");
+  EXPECT_EQ(Version::patch(), 73u);
+  EXPECT_EQ(Version::code(), 73u);
+  EXPECT_STREQ(Version::string(), "0.0.73");
+  EXPECT_STREQ(NeuralNetwork::version(), "0.0.73");
 }
 
 TEST(NetworkIntegrationTest, VersionSavedInSerializerAndLoaded)
@@ -2960,18 +2960,18 @@ TEST(NetworkIntegrationTest, VersionSavedInSerializerAndLoaded)
   const std::string test_path = "test_version_serializer.json";
   NeuralNetworkSerializer::save(nn, test_path);
 
-  // Verify "version": "0.0.72" is present in the raw saved JSON
+  // Verify "version": "0.0.73" is present in the raw saved JSON
   std::ifstream json_file(test_path);
   ASSERT_TRUE(json_file.is_open());
   std::string json_content((std::istreambuf_iterator<char>(json_file)), std::istreambuf_iterator<char>());
   json_file.close();
 
-  EXPECT_NE(json_content.find("\"version\": \"0.0.72\""), std::string::npos);
+  EXPECT_NE(json_content.find("\"version\": \"0.0.73\""), std::string::npos);
 
   // Load back and verify loaded_version()
   std::unique_ptr<NeuralNetwork> loaded(NeuralNetworkSerializer::load(test_path));
   ASSERT_NE(loaded, nullptr);
-  EXPECT_EQ(loaded->loaded_version(), "0.0.72");
+  EXPECT_EQ(loaded->loaded_version(), "0.0.73");
 
   std::remove(test_path.c_str());
 }
@@ -4547,4 +4547,107 @@ TEST(NetworkIntegrationTest, GrnOptionsValidationRejectsZeroSizes)
       .with_enable_bptt(true)
       .with_bptt_max_ticks(4)
       .build());
+}
+
+namespace
+{
+NeuralNetworkOptions make_ff_layer_norm_options(bool use_lookahead_and_swa)
+{
+  std::vector<LayerDetails> hidden_layers = {
+    LayerDetails(Layer::Architecture::FF, 3, activation(activation::method::tanh, 0.0), 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0)
+  };
+  auto builder = NeuralNetworkOptions::create({ 2, 3, 1 })
+    .with_hidden_layers(hidden_layers)
+    .with_output_layer_details(OutputLayerDetails(1, activation(activation::method::linear, 0.0), ErrorCalculation::type::mse, { 0.0, 0.0, 1.0, 0.0, false, 1.0, 1e-12, 0.0, { 0.5 }, 0.0, 0.0 }, 0.0, OptimiserType::Adam, 0.9))
+    .with_learning_rate(0.02)
+    .with_number_of_epoch(40)
+    .with_shuffle_training_data(false)
+    .with_seed(42);
+  if (use_lookahead_and_swa)
+  {
+    builder.with_lookahead(true, 5, 0.5);
+    builder.with_stochastic_weight_averaging(true, 0.5, 0.05);
+  }
+  return builder.build();
+}
+
+const std::vector<std::vector<double>> FFLayerNormInputs = { {0.1, 0.9}, {0.3, 0.4}, {0.5, 0.6}, {0.8, 0.2} };
+const std::vector<std::vector<double>> FFLayerNormOutputs = { {0.2}, {0.4}, {0.5}, {0.7} };
+
+const FFLayer& hidden_ff_layer(const NeuralNetwork& network)
+{
+  return static_cast<const FFLayer&>(network.get_layers()[1]);
+}
+
+void expect_ff_layer_norm_trained(const NeuralNetwork& network)
+{
+  const auto& layer = hidden_ff_layer(network);
+  EXPECT_TRUE(layer.get_use_layer_normalisation());
+  EXPECT_NE(layer.get_ln_gain_values(), std::vector<double>(layer.get_ln_gain_values().size(), 1.0));
+  EXPECT_NE(layer.get_ln_bias_values(), std::vector<double>(layer.get_ln_bias_values().size(), 0.0));
+}
+}
+
+TEST(NetworkIntegrationTest, FFLayerNormTrainsGainAndBias)
+{
+  NeuralNetwork network(make_ff_layer_norm_options(false));
+  network.train(FFLayerNormInputs, FFLayerNormOutputs);
+  expect_ff_layer_norm_trained(network);
+
+  const auto predictions = network.think(FFLayerNormInputs);
+  ASSERT_EQ(predictions.size(), FFLayerNormInputs.size());
+  for (const auto& row : predictions)
+  {
+    for (const double value : row)
+    {
+      EXPECT_TRUE(std::isfinite(value));
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, FFLayerNormTrainsWithLookaheadAndSwa)
+{
+  NeuralNetwork network(make_ff_layer_norm_options(true));
+  network.train(FFLayerNormInputs, FFLayerNormOutputs);
+  expect_ff_layer_norm_trained(network);
+
+  for (const auto& row : network.think(FFLayerNormInputs))
+  {
+    for (const double value : row)
+    {
+      EXPECT_TRUE(std::isfinite(value));
+    }
+  }
+}
+
+TEST(NetworkIntegrationTest, FFLayerNormGainBiasSerializerSaveLoad)
+{
+  NeuralNetwork network(make_ff_layer_norm_options(false));
+  network.train(FFLayerNormInputs, FFLayerNormOutputs);
+  const auto predictions_before = network.think(FFLayerNormInputs);
+
+  const std::string test_path = "test_ff_layer_norm_serializer.json";
+  std::remove(test_path.c_str());
+  NeuralNetworkSerializer::save(network, test_path);
+  const auto loaded = std::unique_ptr<NeuralNetwork>(NeuralNetworkSerializer::load(test_path));
+  std::remove(test_path.c_str());
+  ASSERT_NE(loaded, nullptr);
+
+  const auto& before = hidden_ff_layer(network);
+  const auto& after = hidden_ff_layer(*loaded);
+  EXPECT_TRUE(after.get_use_layer_normalisation());
+  ASSERT_EQ(after.get_ln_gain_values().size(), before.get_ln_gain_values().size());
+  ASSERT_EQ(after.get_ln_bias_values().size(), before.get_ln_bias_values().size());
+  for (size_t i = 0; i < before.get_ln_gain_values().size(); ++i)
+  {
+    EXPECT_NEAR(after.get_ln_gain_values()[i], before.get_ln_gain_values()[i], 1e-9);
+    EXPECT_NEAR(after.get_ln_bias_values()[i], before.get_ln_bias_values()[i], 1e-9);
+  }
+
+  const auto predictions_after = loaded->think(FFLayerNormInputs);
+  ASSERT_EQ(predictions_after.size(), predictions_before.size());
+  for (size_t i = 0; i < predictions_before.size(); ++i)
+  {
+    EXPECT_NEAR(predictions_after[i][0], predictions_before[i][0], 1e-6);
+  }
 }

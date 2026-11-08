@@ -1970,5 +1970,294 @@ TEST_F(FFLayerTest, CalculateOutputGradientsPanic)
   EXPECT_THROW(layer.calculate_output_gradients(batch_go, targets.begin(), batch_hs, 1), std::runtime_error);
 }
 
+TEST_F(FFLayerTest, ForwardFeedWithLayerNormalisation)
+{
+  const unsigned num_inputs = 1;
+  const unsigned num_outputs = 2;
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0, true, std::nullopt);
 
+  layer.set_w_values({ 1.0, 3.0 });
+  layer.set_ln_gain_values({ 1.0, 1.0 });
+  layer.set_ln_bias_values({ 0.0, 0.0 });
 
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1, FFLayer::LayerNormMultiplier);
+
+  batch_go[0].set_outputs(0, { 1.0 });
+  std::vector<std::vector<double>> residual_outputs;
+  layer.calculate_forward_feed(batch_go, prev_layer, residual_outputs, batch_hs, 1, false);
+
+  const auto& outputs = batch_go[0].get_outputs(1);
+  // Linear pre-act: [1.0, 3.0]. Mean = 2.0, Var = 1.0, inv_std = 1/sqrt(1.0 + 1e-5) ~ 0.999995
+  // a_hat = [-0.999995, 0.999995]. tanh(a_hat) are symmetric around 0.
+  EXPECT_NEAR(outputs[0] + outputs[1], 0.0, 1e-9);
+  EXPECT_NEAR(outputs[0], std::tanh(-0.999995), 1e-5);
+  EXPECT_NEAR(outputs[1], std::tanh(0.999995), 1e-5);
+}
+
+TEST_F(FFLayerTest, LayerNormDisabledMatchesUnnormalizedForwardFeed)
+{
+  const unsigned num_inputs = 1;
+  const unsigned num_outputs = 2;
+  FFLayer layer(1, num_inputs, num_outputs, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0, false, std::nullopt);
+
+  layer.set_w_values({ 1.0, 3.0 });
+
+  MockLayer prev_layer(0, num_inputs);
+  std::vector<unsigned> topology = { num_inputs, num_outputs };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1, FFLayer::Multiplier);
+
+  batch_go[0].set_outputs(0, { 1.0 });
+  std::vector<std::vector<double>> residual_outputs;
+  layer.calculate_forward_feed(batch_go, prev_layer, residual_outputs, batch_hs, 1, false);
+
+  const auto& outputs = batch_go[0].get_outputs(1);
+  EXPECT_NEAR(outputs[0], std::tanh(1.0), 1e-9);
+  EXPECT_NEAR(outputs[1], std::tanh(3.0), 1e-9);
+}
+
+namespace
+{
+struct layer_norm_parameters
+{
+  std::vector<double> w_values;
+  std::vector<double> b_values;
+  std::vector<double> gain_values;
+  std::vector<double> bias_values;
+};
+
+constexpr unsigned LayerNormInputCount = 2;
+constexpr unsigned LayerNormNeuronCount = 3;
+
+layer_norm_parameters default_layer_norm_parameters()
+{
+  return {
+    { 0.31, -0.42, 0.57, 0.18, -0.26, 0.73 },
+    { 0.05, -0.11, 0.09 },
+    { 1.3, 0.8, 1.1 },
+    { 0.1, -0.2, 0.05 }
+  };
+}
+
+FFLayer make_layer_norm_layer(const layer_norm_parameters& parameters)
+{
+  FFLayer layer(1, LayerNormInputCount, LayerNormNeuronCount, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true, std::nullopt);
+  layer.set_w_values(parameters.w_values);
+  layer.set_b_values(parameters.b_values);
+  layer.set_ln_gain_values(parameters.gain_values);
+  layer.set_ln_bias_values(parameters.bias_values);
+  return layer;
+}
+
+// loss = sum over time steps of dot(dy, layer output): the scalar whose gradient
+// calculate_hidden_gradients computes when dy is injected as the next layer's gradient.
+double layer_norm_loss(const layer_norm_parameters& parameters, const std::vector<double>& dy, size_t num_time_steps)
+{
+  auto layer = make_layer_norm_layer(parameters);
+  MockLayer prev_layer(0, LayerNormInputCount);
+  std::vector<unsigned> topology = { LayerNormInputCount, LayerNormNeuronCount, LayerNormNeuronCount };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, static_cast<unsigned>(num_time_steps), FFLayer::LayerNormMultiplier);
+  batch_go[0].set_outputs(0, { 0.7, -0.4 });
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, 1, true);
+
+  const auto& outputs = batch_go[0].get_rnn_outputs(1);
+  EXPECT_EQ(outputs.size(), num_time_steps * LayerNormNeuronCount);
+  double loss = 0.0;
+  for (size_t t = 0; t < num_time_steps; ++t)
+  {
+    for (size_t j = 0; j < LayerNormNeuronCount; ++j)
+    {
+      loss += dy[j] * outputs[t * LayerNormNeuronCount + j];
+    }
+  }
+  return loss;
+}
+
+void compute_layer_norm_gradients(FFLayer& layer, const std::vector<double>& dy, size_t num_time_steps, size_t batch_size)
+{
+  MockLayer prev_layer(0, LayerNormInputCount);
+  MockLayer next_layer(2, LayerNormNeuronCount);
+  std::vector<double> identity(LayerNormNeuronCount * LayerNormNeuronCount, 0.0);
+  for (unsigned j = 0; j < LayerNormNeuronCount; ++j)
+  {
+    identity[j * LayerNormNeuronCount + j] = 1.0;
+  }
+  next_layer.set_w_values(identity);
+
+  std::vector<unsigned> topology = { LayerNormInputCount, LayerNormNeuronCount, LayerNormNeuronCount };
+  auto batch_go = create_batch_gradients_and_outputs(topology, batch_size);
+  auto batch_hs = create_batch_hidden_states(topology, batch_size, static_cast<unsigned>(num_time_steps), FFLayer::LayerNormMultiplier);
+  for (size_t b = 0; b < batch_size; ++b)
+  {
+    batch_go[b].set_outputs(0, { 0.7, -0.4 });
+  }
+  layer.calculate_forward_feed(batch_go, prev_layer, {}, batch_hs, batch_size, true);
+
+  const std::vector<std::vector<double>> batch_next_grads(batch_size, dy);
+  layer.calculate_hidden_gradients(batch_go, next_layer, batch_next_grads, batch_hs, batch_size, 0);
+  layer.calculate_and_store_gradients(batch_go, batch_hs, prev_layer, batch_size, 0);
+}
+
+void expect_gradients_match_numerical(
+  const std::vector<double>& analytic,
+  std::vector<double> layer_norm_parameters::* member,
+  const std::vector<double>& dy,
+  size_t num_time_steps)
+{
+  const double step = 1e-6;
+  const auto parameters = default_layer_norm_parameters();
+  ASSERT_EQ(analytic.size(), (parameters.*member).size());
+  for (size_t i = 0; i < analytic.size(); ++i)
+  {
+    auto plus = parameters;
+    (plus.*member)[i] += step;
+    auto minus = parameters;
+    (minus.*member)[i] -= step;
+    const double numerical = (layer_norm_loss(plus, dy, num_time_steps) - layer_norm_loss(minus, dy, num_time_steps)) / (2.0 * step);
+    EXPECT_NEAR(analytic[i], numerical, 1e-6) << "parameter index " << i;
+  }
+}
+
+void check_all_layer_norm_gradients(size_t num_time_steps)
+{
+  const std::vector<double> dy = { 0.6, -0.9, 0.35 };
+  auto layer = make_layer_norm_layer(default_layer_norm_parameters());
+  compute_layer_norm_gradients(layer, dy, num_time_steps, 1);
+
+  expect_gradients_match_numerical(layer.get_w_grads(), &layer_norm_parameters::w_values, dy, num_time_steps);
+  expect_gradients_match_numerical(layer.get_b_grads(), &layer_norm_parameters::b_values, dy, num_time_steps);
+  expect_gradients_match_numerical(layer.get_ln_gain_grads(), &layer_norm_parameters::gain_values, dy, num_time_steps);
+  expect_gradients_match_numerical(layer.get_ln_bias_grads(), &layer_norm_parameters::bias_values, dy, num_time_steps);
+}
+
+void expect_same_layer_norm_values(const FFLayer& actual, const layer_norm_parameters& expected)
+{
+  EXPECT_TRUE(actual.get_use_layer_normalisation());
+  EXPECT_EQ(actual.get_pre_activation_multiplier(), FFLayer::LayerNormMultiplier);
+  EXPECT_EQ(actual.get_ln_gain_values(), expected.gain_values);
+  EXPECT_EQ(actual.get_ln_bias_values(), expected.bias_values);
+}
+}
+
+TEST_F(FFLayerTest, LayerNormConstructionState)
+{
+  FFLayer without_layer_norm(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  EXPECT_FALSE(without_layer_norm.get_use_layer_normalisation());
+  EXPECT_EQ(without_layer_norm.get_pre_activation_multiplier(), FFLayer::Multiplier);
+  EXPECT_TRUE(without_layer_norm.get_ln_gain_values().empty());
+
+  FFLayer with_layer_norm(1, 2, 3, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, true, std::nullopt);
+  EXPECT_TRUE(with_layer_norm.get_use_layer_normalisation());
+  EXPECT_EQ(with_layer_norm.get_pre_activation_multiplier(), FFLayer::LayerNormMultiplier);
+  EXPECT_EQ(with_layer_norm.get_ln_gain_values(), std::vector<double>(3, 1.0));
+  EXPECT_EQ(with_layer_norm.get_ln_bias_values(), std::vector<double>(3, 0.0));
+}
+
+TEST_F(FFLayerTest, LayerNormIsAppliedAfterResidualIsAdded)
+{
+  FFLayer layer(1, 1, 2, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::None, -1, 0.0, nullptr, 1, false, 0.0, true, std::nullopt);
+  layer.set_w_values({ 1.0, 3.0 });
+
+  MockLayer prev_layer(0, 1);
+  std::vector<unsigned> topology = { 1, 2 };
+  auto batch_go = create_batch_gradients_and_outputs(topology, 1);
+  auto batch_hs = create_batch_hidden_states(topology, 1, 1, FFLayer::LayerNormMultiplier);
+  batch_go[0].set_outputs(0, { 1.0 });
+
+  const std::vector<std::vector<double>> residual_outputs = { { 0.0, 2.0 } };
+  layer.calculate_forward_feed(batch_go, prev_layer, residual_outputs, batch_hs, 1, false);
+
+  // Pre-activation with residual: [1, 5]; mean 3, variance 4.
+  const double a_hat = 2.0 / std::sqrt(4.0 + FFLayer::LayerNormEpsilon);
+  const auto& outputs = batch_go[0].get_outputs(1);
+  EXPECT_NEAR(outputs[0], std::tanh(-a_hat), 1e-12);
+  EXPECT_NEAR(outputs[1], std::tanh(a_hat), 1e-12);
+}
+
+TEST_F(FFLayerTest, LayerNormGradientsMatchNumericalGradient)
+{
+  check_all_layer_norm_gradients(1);
+}
+
+TEST_F(FFLayerTest, LayerNormGradientsMatchNumericalGradientAcrossTimeSteps)
+{
+  check_all_layer_norm_gradients(3);
+}
+
+TEST_F(FFLayerTest, LayerNormGradientsAreAveragedAcrossBatch)
+{
+  const std::vector<double> dy = { 0.6, -0.9, 0.35 };
+  auto single_item = make_layer_norm_layer(default_layer_norm_parameters());
+  compute_layer_norm_gradients(single_item, dy, 1, 1);
+  auto four_items = make_layer_norm_layer(default_layer_norm_parameters());
+  compute_layer_norm_gradients(four_items, dy, 1, 4);
+
+  for (size_t j = 0; j < LayerNormNeuronCount; ++j)
+  {
+    EXPECT_NEAR(four_items.get_ln_gain_grads()[j], single_item.get_ln_gain_grads()[j], 1e-12);
+    EXPECT_NEAR(four_items.get_ln_bias_grads()[j], single_item.get_ln_bias_grads()[j], 1e-12);
+  }
+}
+
+TEST_F(FFLayerTest, LayerNormGradientNormIncludesGainAndBias)
+{
+  auto layer = make_layer_norm_layer(default_layer_norm_parameters());
+  compute_layer_norm_gradients(layer, { 0.6, -0.9, 0.35 }, 1, 1);
+
+  double expected = 0.0;
+  for (const auto* grads : { &layer.get_w_grads(), &layer.get_b_grads(), &layer.get_ln_gain_grads(), &layer.get_ln_bias_grads() })
+  {
+    for (const double grad : *grads)
+    {
+      expected += grad * grad;
+    }
+  }
+  EXPECT_NEAR(layer.get_gradient_norm_sq(), expected, 1e-12);
+}
+
+TEST_F(FFLayerTest, LayerNormApplyStoredGradientsUpdatesAndClears)
+{
+  const auto parameters = default_layer_norm_parameters();
+  auto layer = make_layer_norm_layer(parameters);
+  compute_layer_norm_gradients(layer, { 0.6, -0.9, 0.35 }, 1, 1);
+
+  const auto gain_grads = layer.get_ln_gain_grads();
+  const auto bias_grads = layer.get_ln_bias_grads();
+  const double learning_rate = 0.1;
+  layer.apply_stored_gradients(learning_rate, 1.0);
+
+  for (size_t j = 0; j < LayerNormNeuronCount; ++j)
+  {
+    EXPECT_NEAR(layer.get_ln_gain_values()[j], parameters.gain_values[j] - learning_rate * gain_grads[j], 1e-12);
+    EXPECT_NEAR(layer.get_ln_bias_values()[j], parameters.bias_values[j] - learning_rate * bias_grads[j], 1e-12);
+    EXPECT_EQ(layer.get_ln_gain_grads()[j], 0.0);
+    EXPECT_EQ(layer.get_ln_bias_grads()[j], 0.0);
+  }
+}
+
+TEST_F(FFLayerTest, LayerNormCopyMoveAndClonePreserveState)
+{
+  const auto parameters = default_layer_norm_parameters();
+  const auto source = make_layer_norm_layer(parameters);
+
+  FFLayer copied(source);
+  expect_same_layer_norm_values(copied, parameters);
+
+  FFLayer copy_assigned(1, LayerNormInputCount, LayerNormNeuronCount, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  copy_assigned = source;
+  expect_same_layer_norm_values(copy_assigned, parameters);
+
+  FFLayer moved(std::move(copied));
+  expect_same_layer_norm_values(moved, parameters);
+
+  FFLayer move_assigned(1, LayerNormInputCount, LayerNormNeuronCount, 0.0, Layer::Role::Hidden, activation(activation::method::tanh, 0.0), OptimiserType::SGD, -1, 0.0, nullptr, 1, true, 0.0, std::nullopt);
+  move_assigned = std::move(moved);
+  expect_same_layer_norm_values(move_assigned, parameters);
+
+  const std::unique_ptr<Layer> cloned(source.clone());
+  expect_same_layer_norm_values(static_cast<const FFLayer&>(*cloned), parameters);
+}

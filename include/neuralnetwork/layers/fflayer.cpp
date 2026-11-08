@@ -59,6 +59,8 @@ struct FfBackwardTask
   double* this_grads_ptr;
   std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
   const std::vector<HiddenStates>* batch_hidden_states;
+  std::span<double> local_ln_gain_grads;
+  std::span<double> local_ln_bias_grads;
 
   void operator()() const
   {
@@ -73,7 +75,9 @@ struct FfBackwardTask
       next_grads_ptr,
       this_grads_ptr,
       *batch_gradients_and_outputs,
-      *batch_hidden_states
+      *batch_hidden_states,
+      local_ln_gain_grads,
+      local_ln_bias_grads
     );
   }
 };
@@ -87,6 +91,8 @@ struct FfPostGemmBackwardTask
   std::vector<GradientsAndOutputs>* batch_gradients_and_outputs;
   const std::vector<HiddenStates>* batch_hidden_states;
   const double* this_grads_ptr;
+  std::span<double> local_ln_gain_grads;
+  std::span<double> local_ln_bias_grads;
 
   void operator()() const
   {
@@ -96,7 +102,9 @@ struct FfPostGemmBackwardTask
       n_this,
       *batch_gradients_and_outputs,
       *batch_hidden_states,
-      this_grads_ptr
+      this_grads_ptr,
+      local_ln_gain_grads,
+      local_ln_bias_grads
     );
   }
 };
@@ -173,6 +181,7 @@ FFLayer::FFLayer(
   int number_of_threads,
   bool has_bias,
   double momentum,
+  bool use_layer_normalisation,
   std::optional<uint32_t> seed
 ) :
   FFLayer(
@@ -189,6 +198,80 @@ FFLayer::FFLayer(
     number_of_threads,
     has_bias,
     momentum,
+    use_layer_normalisation,
+    seed
+  )
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+}
+
+FFLayer::FFLayer(
+  unsigned layer_index,
+  unsigned num_neurons_in_previous_layer,
+  unsigned num_neurons_in_this_layer,
+  double weight_decay,
+  const Role layer_role,
+  const activation& activation_method,
+  const OptimiserType& optimiser_type,
+  int residual_layer_number,
+  double dropout_rate,
+  ResidualProjector* residual_projector,
+  int number_of_threads,
+  bool has_bias,
+  double momentum,
+  std::optional<uint32_t> seed
+) :
+  FFLayer(
+    layer_index,
+    num_neurons_in_previous_layer,
+    num_neurons_in_this_layer,
+    weight_decay,
+    layer_role,
+    activation_method,
+    optimiser_type,
+    residual_layer_number,
+    dropout_rate,
+    residual_projector,
+    number_of_threads,
+    has_bias,
+    momentum,
+    false,
+    seed
+  )
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+}
+
+FFLayer::FFLayer(
+  unsigned layer_index,
+  unsigned num_neurons_in_previous_layer,
+  unsigned num_neurons_in_this_layer,
+  const std::vector<double>& weight_decays,
+  const Role layer_role,
+  const activation& activation_method,
+  const OptimiserType& optimiser_type,
+  int residual_layer_number,
+  double dropout_rate,
+  ResidualProjector* residual_projector,
+  int number_of_threads,
+  bool has_bias,
+  double momentum,
+  bool use_layer_normalisation,
+  std::optional<uint32_t> seed
+) :
+  FFLayer(
+    layer_index,
+    weight_decays,
+    layer_role,
+    layer_activation_helper(activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
+    optimiser_type,
+    residual_layer_number,
+    dropout_rate,
+    residual_projector,
+    number_of_threads,
+    has_bias,
+    momentum,
+    use_layer_normalisation,
     seed
   )
 {
@@ -213,9 +296,11 @@ FFLayer::FFLayer(
 ) :
   FFLayer(
     layer_index,
+    num_neurons_in_previous_layer,
+    num_neurons_in_this_layer,
     weight_decays,
     layer_role,
-    layer_activation_helper(activation_method, num_neurons_in_previous_layer, num_neurons_in_this_layer),
+    activation_method,
     optimiser_type,
     residual_layer_number,
     dropout_rate,
@@ -223,6 +308,7 @@ FFLayer::FFLayer(
     number_of_threads,
     has_bias,
     momentum,
+    false,
     seed
   )
 {
@@ -241,6 +327,7 @@ FFLayer::FFLayer(
   int number_of_threads,
   bool has_bias,
   double momentum,
+  bool use_layer_normalisation,
   std::optional<uint32_t> seed
 ) :
   Layer(
@@ -256,14 +343,90 @@ FFLayer::FFLayer(
     number_of_threads,
     momentum,
     seed
+  ),
+  _use_layer_normalisation(use_layer_normalisation)
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  initialize_layer_norm();
+  cache_recurrent_weights();
+}
+
+FFLayer::FFLayer(
+  unsigned layer_index,
+  const std::vector<double>& weight_decays,
+  const Role layer_role,
+  const layer_activation_helper& lah,
+  const OptimiserType& optimiser_type,
+  int residual_layer_number,
+  double dropout_rate,
+  ResidualProjector* residual_projector,
+  int number_of_threads,
+  bool has_bias,
+  double momentum,
+  std::optional<uint32_t> seed
+) :
+  FFLayer(
+    layer_index,
+    weight_decays,
+    layer_role,
+    lah,
+    optimiser_type,
+    residual_layer_number,
+    dropout_rate,
+    residual_projector,
+    number_of_threads,
+    has_bias,
+    momentum,
+    false,
+    seed
   )
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
-  cache_recurrent_weights();
+}
+
+void FFLayer::initialize_layer_norm()
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+  if (!_use_layer_normalisation)
+  {
+    return;
+  }
+
+  const auto n = get_number_neurons();
+  _ln_gain_values.assign(n, 1.0);
+  _ln_gain_grads.assign(n, 0.0);
+  _ln_gain_velocities.assign(n, 0.0);
+  _ln_gain_m1.assign(n, 0.0);
+  _ln_gain_m2.assign(n, 0.0);
+  _ln_gain_timesteps.assign(n, 0);
+  _ln_gain_decays.assign(n, 0.0);
+
+  _ln_bias_values.assign(n, 0.0);
+  _ln_bias_grads.assign(n, 0.0);
+  _ln_bias_velocities.assign(n, 0.0);
+  _ln_bias_m1.assign(n, 0.0);
+  _ln_bias_m2.assign(n, 0.0);
+  _ln_bias_timesteps.assign(n, 0);
+  _ln_bias_decays.assign(n, 0.0);
 }
 
 FFLayer::FFLayer(const FFLayer& src) noexcept :
   Layer(src),
+  _use_layer_normalisation(src._use_layer_normalisation),
+  _ln_gain_values(src._ln_gain_values),
+  _ln_gain_grads(src._ln_gain_grads),
+  _ln_gain_velocities(src._ln_gain_velocities),
+  _ln_gain_m1(src._ln_gain_m1),
+  _ln_gain_m2(src._ln_gain_m2),
+  _ln_gain_timesteps(src._ln_gain_timesteps),
+  _ln_gain_decays(src._ln_gain_decays),
+  _ln_bias_values(src._ln_bias_values),
+  _ln_bias_grads(src._ln_bias_grads),
+  _ln_bias_velocities(src._ln_bias_velocities),
+  _ln_bias_m1(src._ln_bias_m1),
+  _ln_bias_m2(src._ln_bias_m2),
+  _ln_bias_timesteps(src._ln_bias_timesteps),
+  _ln_bias_decays(src._ln_bias_decays),
   _w_values_T(src._w_values_T),
   _w_values_T_dirty(src._w_values_T_dirty)
 {
@@ -292,6 +455,21 @@ FFLayer::FFLayer(
   const std::vector<double>& b_m2,
   const std::vector<long long>& b_timesteps,
   const std::vector<double>& b_decays,
+  bool use_layer_normalisation,
+  const std::vector<double>& ln_gain_values,
+  const std::vector<double>& ln_gain_grads,
+  const std::vector<double>& ln_gain_velocities,
+  const std::vector<double>& ln_gain_m1,
+  const std::vector<double>& ln_gain_m2,
+  const std::vector<long long>& ln_gain_timesteps,
+  const std::vector<double>& ln_gain_decays,
+  const std::vector<double>& ln_bias_values,
+  const std::vector<double>& ln_bias_grads,
+  const std::vector<double>& ln_bias_velocities,
+  const std::vector<double>& ln_bias_m1,
+  const std::vector<double>& ln_bias_m2,
+  const std::vector<long long>& ln_bias_timesteps,
+  const std::vector<double>& ln_bias_decays,
   const ResidualProjector* residual_projector,
   int number_of_threads,
   const layer_activation_helper& lah,
@@ -322,7 +500,22 @@ FFLayer::FFLayer(
     number_of_threads,
     lah,
     momentum
-  )
+  ),
+  _use_layer_normalisation(use_layer_normalisation),
+  _ln_gain_values(ln_gain_values),
+  _ln_gain_grads(ln_gain_grads),
+  _ln_gain_velocities(ln_gain_velocities),
+  _ln_gain_m1(ln_gain_m1),
+  _ln_gain_m2(ln_gain_m2),
+  _ln_gain_timesteps(ln_gain_timesteps),
+  _ln_gain_decays(ln_gain_decays),
+  _ln_bias_values(ln_bias_values),
+  _ln_bias_grads(ln_bias_grads),
+  _ln_bias_velocities(ln_bias_velocities),
+  _ln_bias_m1(ln_bias_m1),
+  _ln_bias_m2(ln_bias_m2),
+  _ln_bias_timesteps(ln_bias_timesteps),
+  _ln_bias_decays(ln_bias_decays)
 {
   (void)number_input_neurons;
   (void)number_output_neurons;
@@ -330,8 +523,84 @@ FFLayer::FFLayer(
   cache_recurrent_weights();
 }
 
+FFLayer::FFLayer(
+  unsigned layer_index,
+  const Role layer_role,
+  const OptimiserType optimiser_type,
+  int residual_layer_number,
+  unsigned number_input_neurons,
+  unsigned number_output_neurons,
+  const std::vector<Neuron>& neurons,
+  const std::vector<double>& w_values,
+  const std::vector<double>& w_grads,
+  const std::vector<double>& w_velocities,
+  const std::vector<double>& w_m1,
+  const std::vector<double>& w_m2,
+  const std::vector<long long>& w_timesteps,
+  const std::vector<double>& w_decays,
+  const std::vector<double>& b_values,
+  const std::vector<double>& b_grads,
+  const std::vector<double>& b_velocities,
+  const std::vector<double>& b_m1,
+  const std::vector<double>& b_m2,
+  const std::vector<long long>& b_timesteps,
+  const std::vector<double>& b_decays,
+  const ResidualProjector* residual_projector,
+  int number_of_threads,
+  const layer_activation_helper& lah,
+  double momentum
+) noexcept :
+  FFLayer(
+    layer_index,
+    layer_role,
+    optimiser_type,
+    residual_layer_number,
+    number_input_neurons,
+    number_output_neurons,
+    neurons,
+    w_values,
+    w_grads,
+    w_velocities,
+    w_m1,
+    w_m2,
+    w_timesteps,
+    w_decays,
+    b_values,
+    b_grads,
+    b_velocities,
+    b_m1,
+    b_m2,
+    b_timesteps,
+    b_decays,
+    false,
+    {}, {}, {}, {}, {}, {}, {},
+    {}, {}, {}, {}, {}, {}, {},
+    residual_projector,
+    number_of_threads,
+    lah,
+    momentum
+  )
+{
+  MYODDWEB_PROFILE_FUNCTION("FFLayer");
+}
+
 FFLayer::FFLayer(FFLayer&& src) noexcept :
   Layer(std::move(src)),
+  _use_layer_normalisation(src._use_layer_normalisation),
+  _ln_gain_values(std::move(src._ln_gain_values)),
+  _ln_gain_grads(std::move(src._ln_gain_grads)),
+  _ln_gain_velocities(std::move(src._ln_gain_velocities)),
+  _ln_gain_m1(std::move(src._ln_gain_m1)),
+  _ln_gain_m2(std::move(src._ln_gain_m2)),
+  _ln_gain_timesteps(std::move(src._ln_gain_timesteps)),
+  _ln_gain_decays(std::move(src._ln_gain_decays)),
+  _ln_bias_values(std::move(src._ln_bias_values)),
+  _ln_bias_grads(std::move(src._ln_bias_grads)),
+  _ln_bias_velocities(std::move(src._ln_bias_velocities)),
+  _ln_bias_m1(std::move(src._ln_bias_m1)),
+  _ln_bias_m2(std::move(src._ln_bias_m2)),
+  _ln_bias_timesteps(std::move(src._ln_bias_timesteps)),
+  _ln_bias_decays(std::move(src._ln_bias_decays)),
   _w_values_T(std::move(src._w_values_T)),
   _w_values_T_dirty(src._w_values_T_dirty)
 {
@@ -344,6 +613,21 @@ FFLayer& FFLayer::operator=(const FFLayer& src) noexcept
   if (this != &src)
   {
     Layer::operator=(src);
+    _use_layer_normalisation = src._use_layer_normalisation;
+    _ln_gain_values = src._ln_gain_values;
+    _ln_gain_grads = src._ln_gain_grads;
+    _ln_gain_velocities = src._ln_gain_velocities;
+    _ln_gain_m1 = src._ln_gain_m1;
+    _ln_gain_m2 = src._ln_gain_m2;
+    _ln_gain_timesteps = src._ln_gain_timesteps;
+    _ln_gain_decays = src._ln_gain_decays;
+    _ln_bias_values = src._ln_bias_values;
+    _ln_bias_grads = src._ln_bias_grads;
+    _ln_bias_velocities = src._ln_bias_velocities;
+    _ln_bias_m1 = src._ln_bias_m1;
+    _ln_bias_m2 = src._ln_bias_m2;
+    _ln_bias_timesteps = src._ln_bias_timesteps;
+    _ln_bias_decays = src._ln_bias_decays;
     _w_values_T = src._w_values_T;
     _w_values_T_dirty = src._w_values_T_dirty;
   }
@@ -356,6 +640,21 @@ FFLayer& FFLayer::operator=(FFLayer&& src) noexcept
   if (this != &src)
   {
     Layer::operator=(std::move(src));
+    _use_layer_normalisation = src._use_layer_normalisation;
+    _ln_gain_values = std::move(src._ln_gain_values);
+    _ln_gain_grads = std::move(src._ln_gain_grads);
+    _ln_gain_velocities = std::move(src._ln_gain_velocities);
+    _ln_gain_m1 = std::move(src._ln_gain_m1);
+    _ln_gain_m2 = std::move(src._ln_gain_m2);
+    _ln_gain_timesteps = std::move(src._ln_gain_timesteps);
+    _ln_gain_decays = std::move(src._ln_gain_decays);
+    _ln_bias_values = std::move(src._ln_bias_values);
+    _ln_bias_grads = std::move(src._ln_bias_grads);
+    _ln_bias_velocities = std::move(src._ln_bias_velocities);
+    _ln_bias_m1 = std::move(src._ln_bias_m1);
+    _ln_bias_m2 = std::move(src._ln_bias_m2);
+    _ln_bias_timesteps = std::move(src._ln_bias_timesteps);
+    _ln_bias_decays = std::move(src._ln_bias_decays);
     _w_values_T = std::move(src._w_values_T);
     _w_values_T_dirty = src._w_values_T_dirty;
   }
@@ -685,10 +984,28 @@ void FFLayer::run_post_gemm(
         }
       }
 
+      double inv_std = 0.0;
+      if (_use_layer_normalisation)
+      {
+        simd::layer_norm_forward(
+          current_pre_act,
+          _ln_gain_values.data(),
+          _ln_bias_values.data(),
+          current_pre_act,
+          N_this,
+          LayerNormEpsilon,
+          inv_std
+        );
+      }
+
       if (!batch_hidden_states.empty())
       {
         auto& layer_states_ref = batch_hidden_states[b].at(get_layer_index());
         layer_states_ref[t].set_pre_activation_sums(current_pre_act, N_this);
+        if (_use_layer_normalisation)
+        {
+          layer_states_ref[t].set_pre_activation_sum(static_cast<unsigned>(N_this), inv_std);
+        }
       }
 
       for (const auto& r : _layer_activation_helper.ranges())
@@ -883,9 +1200,33 @@ void FFLayer::calculate_hidden_gradients(
     ? std::max(1U, std::min({ max_layer_threads, static_cast<unsigned int>(batch_size), static_cast<unsigned int>((effective_batch_size * N_next * N_this) / 50000) }))
     : 1U;
 
+  if (_use_layer_normalisation)
+  {
+    if (!_ln_gain_grads.empty())
+    {
+      std::memset(_ln_gain_grads.data(), 0, _ln_gain_grads.size() * sizeof(double));
+    }
+    if (!_ln_bias_grads.empty())
+    {
+      std::memset(_ln_bias_grads.data(), 0, _ln_bias_grads.size() * sizeof(double));
+    }
+    const unsigned int aux_threads = (active_threads > 1) ? (active_threads - 1) : 0;
+    if (_thread_grad_accumulators.size() < aux_threads)
+    {
+      _thread_grad_accumulators.resize(aux_threads);
+    }
+    for (unsigned int t = 0; t < aux_threads; ++t)
+    {
+      _thread_grad_accumulators[t].ln_gain_grads.resize_and_zero(N_this);
+      _thread_grad_accumulators[t].ln_bias_grads.resize_and_zero(N_this);
+    }
+  }
+
   if (active_threads <= 1)
   {
-    run_backward_chunk(0, batch_size, num_time_steps, N_next, N_this, W_next, W_next_T, next_grads_ptr, this_grads_ptr, batch_gradients_and_outputs, batch_hidden_states);
+    std::span<double> local_gain = _use_layer_normalisation ? std::span<double>(_ln_gain_grads) : std::span<double>{};
+    std::span<double> local_bias = _use_layer_normalisation ? std::span<double>(_ln_bias_grads) : std::span<double>{};
+    run_backward_chunk(0, batch_size, num_time_steps, N_next, N_this, W_next, W_next_T, next_grads_ptr, this_grads_ptr, batch_gradients_and_outputs, batch_hidden_states, local_gain, local_bias);
   }
   else
   {
@@ -896,6 +1237,9 @@ void FFLayer::calculate_hidden_gradients(
       const size_t end = start + size;
       if (start < end)
       {
+        std::span<double> target_gain = _use_layer_normalisation ? ((t == 0) ? std::span<double>(_ln_gain_grads) : std::span<double>(_thread_grad_accumulators[t - 1].ln_gain_grads)) : std::span<double>{};
+        std::span<double> target_bias = _use_layer_normalisation ? ((t == 0) ? std::span<double>(_ln_bias_grads) : std::span<double>(_thread_grad_accumulators[t - 1].ln_bias_grads)) : std::span<double>{};
+
         _task_queue_pool->enqueue(FfBackwardTask{
           this,
           start,
@@ -908,12 +1252,24 @@ void FFLayer::calculate_hidden_gradients(
           next_grads_ptr,
           this_grads_ptr,
           &batch_gradients_and_outputs,
-          &batch_hidden_states
+          &batch_hidden_states,
+          target_gain,
+          target_bias
         });
       }
       start = end;
     }
     _task_queue_pool->get();
+
+    if (_use_layer_normalisation)
+    {
+      const unsigned int aux_threads = active_threads - 1;
+      for (unsigned int t = 0; t < aux_threads; ++t)
+      {
+        simd::add_vectors(_thread_grad_accumulators[t].ln_gain_grads.data(), _ln_gain_grads.data(), N_this);
+        simd::add_vectors(_thread_grad_accumulators[t].ln_bias_grads.data(), _ln_bias_grads.data(), N_this);
+      }
+    }
   }
 }
 
@@ -928,7 +1284,9 @@ void FFLayer::run_backward_chunk(
   const double* next_grads_ptr,
   double* this_grads_ptr,
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-  const std::vector<HiddenStates>& batch_hidden_states) const
+  const std::vector<HiddenStates>& batch_hidden_states,
+  std::span<double> local_ln_gain_grads,
+  std::span<double> local_ln_bias_grads) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   const size_t b_step_start = start * num_time_steps;
@@ -945,7 +1303,7 @@ void FFLayer::run_backward_chunk(
     run_gemm_backward(b_step_start, b_step_end, N_next, N_this, W_next, next_grads_ptr, this_grads_ptr);
   }
 
-  run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, this_grads_ptr);
+  run_post_gemm_backward(start, end, N_this, batch_gradients_and_outputs, batch_hidden_states, this_grads_ptr, local_ln_gain_grads, local_ln_bias_grads);
 }
 
 void FFLayer::calculate_hidden_gradients_from_output_gradients(
@@ -1039,9 +1397,33 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
     : 1U;
   const bool use_multithreading = (active_threads > 1);
 
+  if (_use_layer_normalisation)
+  {
+    if (!_ln_gain_grads.empty())
+    {
+      std::memset(_ln_gain_grads.data(), 0, _ln_gain_grads.size() * sizeof(double));
+    }
+    if (!_ln_bias_grads.empty())
+    {
+      std::memset(_ln_bias_grads.data(), 0, _ln_bias_grads.size() * sizeof(double));
+    }
+    const unsigned int aux_threads = (active_threads > 1) ? (active_threads - 1) : 0;
+    if (_thread_grad_accumulators.size() < aux_threads)
+    {
+      _thread_grad_accumulators.resize(aux_threads);
+    }
+    for (unsigned int t = 0; t < aux_threads; ++t)
+    {
+      _thread_grad_accumulators[t].ln_gain_grads.resize_and_zero(N_this);
+      _thread_grad_accumulators[t].ln_bias_grads.resize_and_zero(N_this);
+    }
+  }
+
   if (!use_multithreading)
   {
-    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, this_grads_ptr);
+    std::span<double> local_gain = _use_layer_normalisation ? std::span<double>(_ln_gain_grads) : std::span<double>{};
+    std::span<double> local_bias = _use_layer_normalisation ? std::span<double>(_ln_bias_grads) : std::span<double>{};
+    run_post_gemm_backward(0, batch_size, N_this, batch_gradients_and_outputs, batch_hidden_states, this_grads_ptr, local_gain, local_bias);
   }
   else
   {
@@ -1052,6 +1434,9 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
       size_t end = start + size;
       if (start < end)
       {
+        std::span<double> target_gain = _use_layer_normalisation ? ((t == 0) ? std::span<double>(_ln_gain_grads) : std::span<double>(_thread_grad_accumulators[t - 1].ln_gain_grads)) : std::span<double>{};
+        std::span<double> target_bias = _use_layer_normalisation ? ((t == 0) ? std::span<double>(_ln_bias_grads) : std::span<double>(_thread_grad_accumulators[t - 1].ln_bias_grads)) : std::span<double>{};
+
         _task_queue_pool->enqueue(FfPostGemmBackwardTask{
           this,
           start,
@@ -1059,12 +1444,24 @@ void FFLayer::calculate_hidden_gradients_from_output_gradients(
           N_this,
           &batch_gradients_and_outputs,
           &batch_hidden_states,
-          this_grads_ptr
+          this_grads_ptr,
+          target_gain,
+          target_bias
         });
       }
       start = end;
     }
     _task_queue_pool->get();
+
+    if (_use_layer_normalisation)
+    {
+      const unsigned int aux_threads = active_threads - 1;
+      for (unsigned int t = 0; t < aux_threads; ++t)
+      {
+        simd::add_vectors(_thread_grad_accumulators[t].ln_gain_grads.data(), _ln_gain_grads.data(), N_this);
+        simd::add_vectors(_thread_grad_accumulators[t].ln_bias_grads.data(), _ln_bias_grads.data(), N_this);
+      }
+    }
   }
 }
 
@@ -1223,6 +1620,11 @@ void FFLayer::calculate_and_store_gradients(const std::vector<GradientsAndOutput
     {
       simd::scale_vector(_b_grads.data(), inv_batch, _b_grads.size());
     }
+    if (_use_layer_normalisation)
+    {
+      simd::scale_vector(_ln_gain_grads.data(), inv_batch, _ln_gain_grads.size());
+      simd::scale_vector(_ln_bias_grads.data(), inv_batch, _ln_bias_grads.size());
+    }
   }
 }
 
@@ -1234,6 +1636,11 @@ double FFLayer::get_gradient_norm_sq() const
   {
     norm_sq += simd::sum_sq(_b_grads.data(), _b_grads.size());
   }
+  if (_use_layer_normalisation)
+  {
+    norm_sq += simd::sum_sq(_ln_gain_grads.data(), _ln_gain_grads.size());
+    norm_sq += simd::sum_sq(_ln_bias_grads.data(), _ln_bias_grads.size());
+  }
   return norm_sq;
 }
 
@@ -1243,6 +1650,11 @@ void FFLayer::accumulate_swa_average_impl(const Layer& snapshot, size_t existing
   const auto& other = static_cast<const FFLayer&>(snapshot);
   swa_average_into(_w_values, other._w_values, existing_swa_count);
   swa_average_into(_b_values, other._b_values, existing_swa_count);
+  if (_use_layer_normalisation && other._use_layer_normalisation)
+  {
+    swa_average_into(_ln_gain_values, other._ln_gain_values, existing_swa_count);
+    swa_average_into(_ln_bias_values, other._ln_bias_values, existing_swa_count);
+  }
   cache_recurrent_weights();
 }
 
@@ -1254,6 +1666,11 @@ void FFLayer::update_lookahead_slow_weights_impl(Layer& fast_layer, double alpha
   if (has_bias())
   {
     simd::lookahead_step(_b_values.data(), other._b_values.data(), alpha, _b_values.size());
+  }
+  if (_use_layer_normalisation && other._use_layer_normalisation)
+  {
+    simd::lookahead_step(_ln_gain_values.data(), other._ln_gain_values.data(), alpha, _ln_gain_values.size());
+    simd::lookahead_step(_ln_bias_values.data(), other._ln_bias_values.data(), alpha, _ln_bias_values.size());
   }
   cache_recurrent_weights();
   other.cache_recurrent_weights();
@@ -1267,6 +1684,11 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
   {
     apply_update_to_vector(_b_values, _b_grads, _b_velocities, _b_m1, _b_m2, _b_timesteps, _b_decays, learning_rate, clipping_scale, true, _optimiser_type);
   }
+  if (_use_layer_normalisation)
+  {
+    apply_update_to_vector(_ln_gain_values, _ln_gain_grads, _ln_gain_velocities, _ln_gain_m1, _ln_gain_m2, _ln_gain_timesteps, _ln_gain_decays, learning_rate, clipping_scale, true, _optimiser_type);
+    apply_update_to_vector(_ln_bias_values, _ln_bias_grads, _ln_bias_velocities, _ln_bias_m1, _ln_bias_m2, _ln_bias_timesteps, _ln_bias_decays, learning_rate, clipping_scale, true, _optimiser_type);
+  }
   if (!_w_grads.empty())
   {
     std::memset(_w_grads.data(), 0, _w_grads.size() * sizeof(double));
@@ -1274,6 +1696,17 @@ void FFLayer::apply_stored_gradients(double learning_rate, double clipping_scale
   if (has_bias() && !_b_grads.empty())
   {
     std::memset(_b_grads.data(), 0, _b_grads.size() * sizeof(double));
+  }
+  if (_use_layer_normalisation)
+  {
+    if (!_ln_gain_grads.empty())
+    {
+      std::memset(_ln_gain_grads.data(), 0, _ln_gain_grads.size() * sizeof(double));
+    }
+    if (!_ln_bias_grads.empty())
+    {
+      std::memset(_ln_bias_grads.data(), 0, _ln_bias_grads.size() * sizeof(double));
+    }
   }
   cache_recurrent_weights();
 }
@@ -1342,7 +1775,9 @@ void FFLayer::run_post_gemm_backward(
   size_t N_this,
   std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
   const std::vector<HiddenStates>& batch_hidden_states,
-  const double* flattened_this_grads) const
+  const double* flattened_this_grads,
+  std::span<double> local_ln_gain_grads,
+  std::span<double> local_ln_bias_grads) const
 {
   MYODDWEB_PROFILE_FUNCTION("FFLayer");
   
@@ -1353,6 +1788,10 @@ void FFLayer::run_post_gemm_backward(
   std::array<double, 64> deriv_stack;
   TempBuffer<double, 6> deriv_heap(N_this > 64 ? N_this : 0);
   double* deriv_ptr = (N_this <= 64) ? deriv_stack.data() : deriv_heap.data();
+
+  std::array<double, 64> dx_stack;
+  TempBuffer<double, 9> dx_heap((_use_layer_normalisation && N_this > 64) ? N_this : 0);
+  double* dx_ptr = _use_layer_normalisation ? ((N_this <= 64) ? dx_stack.data() : dx_heap.data()) : nullptr;
 
   TempBuffer<double, 7> rnn_grads_row(initial_time_steps > 1 ? initial_time_steps * N_this : 0);
 
@@ -1442,6 +1881,29 @@ void FFLayer::run_post_gemm_backward(
             );
           }
         }
+      }
+
+      if (_use_layer_normalisation)
+      {
+        const double inv_std = current_hidden_state.get_pre_activation_sum(static_cast<unsigned>(N_this));
+        double* dy_ptr = rnn_grads_ptr + t * N_this;
+
+        double* gain_accum = local_ln_gain_grads.empty() ? _ln_gain_grads.data() : local_ln_gain_grads.data();
+        double* bias_accum = local_ln_bias_grads.empty() ? _ln_bias_grads.data() : local_ln_bias_grads.data();
+
+        simd::layer_norm_backward(
+          dy_ptr,
+          pre_act,
+          _ln_gain_values.data(),
+          _ln_bias_values.data(),
+          inv_std,
+          N_this,
+          dx_ptr,
+          gain_accum,
+          bias_accum
+        );
+
+        std::memcpy(dy_ptr, dx_ptr, N_this * sizeof(double));
       }
     }
 

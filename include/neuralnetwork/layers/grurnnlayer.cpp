@@ -1402,6 +1402,9 @@ void GRURNNLayer::finalize_forward_step(
     simd::layer_norm_forward(h_prev_slice, _ln_h_gain_values.data(), _ln_h_bias_values.data(), h_prev_slice, N_this, LayerNormEpsilon, inv_std);
     double* out_ptr = &batch_output_sequences.data()[(b * num_time_steps + t) * N_this];
     std::memcpy(out_ptr, h_prev_slice, N_this * sizeof(double));
+    // Only element [0] of the inv_std block is used; clear the rest so stale
+    // scratch memory is never copied into batch_hidden_states.
+    std::fill_n(item_packed + 5 * N_this, N_this, 0.0);
     item_packed[5 * N_this] = inv_std;
   }
 

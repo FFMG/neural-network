@@ -16,20 +16,25 @@ public:
   {
     OnTrack,
     Stuck,
-    Diverging
+    Diverging,
+    // Not diverging, no meaningful improvement left, and DA at or above the converged
+    // threshold: the layer has plateaued at a useful level rather than failed to learn.
+    Converged
   };
 
   TrainingMonitor(size_t window_size = 5,
     double da_weight = 0.6,
     double rmse_weight = 0.4,
     double da_threshold = 0.52,
-    double rmse_tolerance = 1e-3) noexcept
-    : 
+    double rmse_tolerance = 1e-3,
+    double converged_da_threshold = 0.70) noexcept
+    :
     _min_window(window_size),
     _da_weight(da_weight),
     _rmse_weight(rmse_weight),
     _da_threshold(da_threshold),
-    _rmse_tolerance(rmse_tolerance)
+    _rmse_tolerance(rmse_tolerance),
+    _converged_da_threshold(converged_da_threshold)
   {
     MYODDWEB_PROFILE_FUNCTION("TrainingMonitor");
   }
@@ -40,7 +45,8 @@ public:
     _da_weight(src._da_weight),
     _rmse_weight(src._rmse_weight),
     _da_threshold(src._da_threshold),
-    _rmse_tolerance(src._rmse_tolerance)
+    _rmse_tolerance(src._rmse_tolerance),
+    _converged_da_threshold(src._converged_da_threshold)
   {
     MYODDWEB_PROFILE_FUNCTION("TrainingMonitor");
   }
@@ -51,7 +57,8 @@ public:
     _da_weight(src._da_weight),
     _rmse_weight(src._rmse_weight),
     _da_threshold(src._da_threshold),
-    _rmse_tolerance(src._rmse_tolerance)
+    _rmse_tolerance(src._rmse_tolerance),
+    _converged_da_threshold(src._converged_da_threshold)
   {
     MYODDWEB_PROFILE_FUNCTION("TrainingMonitor");
   }
@@ -67,6 +74,7 @@ public:
       _rmse_weight = src._rmse_weight;
       _da_threshold = src._da_threshold;
       _rmse_tolerance = src._rmse_tolerance;
+      _converged_da_threshold = src._converged_da_threshold;
     }
     return *this;
   }
@@ -82,6 +90,7 @@ public:
       _rmse_weight = src._rmse_weight;
       _da_threshold = src._da_threshold;
       _rmse_tolerance = src._rmse_tolerance;
+      _converged_da_threshold = src._converged_da_threshold;
     }
     return *this;
   }
@@ -137,8 +146,19 @@ public:
       return TrainingStatus::Diverging;
     }
 
-    if (da_vals.back() < _da_threshold || score < 0.01)
+    if (da_vals.back() < _da_threshold)
     {
+      return TrainingStatus::Stuck;
+    }
+
+    if (score < 0.01)
+    {
+      // A flat trend is only a problem when DA plateaued below a useful level;
+      // at or above the converged threshold there is simply nothing left to gain.
+      if (da_vals.back() >= _converged_da_threshold)
+      {
+        return TrainingStatus::Converged;
+      }
       return TrainingStatus::Stuck;
     }
 
@@ -159,7 +179,10 @@ public:
     case TrainingMonitor::TrainingStatus::Diverging:
       return "diverging";
 
-    default:                                        
+    case TrainingMonitor::TrainingStatus::Converged:
+      return "converged";
+
+    default:
       return "unknown";
     }
   }
@@ -209,5 +232,6 @@ private:
   double _rmse_weight;
   double _da_threshold;
   double _rmse_tolerance;
+  double _converged_da_threshold;
 };
 } // namespace myoddweb::nn

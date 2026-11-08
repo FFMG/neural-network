@@ -118,12 +118,101 @@ TEST(TrainingMonitorTest, StatusStuckDueToLowScore)
   monitor.add_metric(ErrorCalculation::type::rmse, 0.2);
   monitor.add_metric(ErrorCalculation::type::rmse, 0.2); // slope: 0.0
 
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.6);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.6);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.6); // slope: 0.0
+
+  // Score: 0.0, which is < 0.01, and DA 0.6 is below the default converged threshold (0.70), so it should be Stuck
+  EXPECT_EQ(monitor.evaluate(), TrainingMonitor::TrainingStatus::Stuck);
+}
+
+TEST(TrainingMonitorTest, StatusConvergedWhenFlatAtHighAccuracy)
+{
+  TrainingMonitor monitor(3, 0.5, 0.5, 0.5, 1e-3);
+
+  // RMSE flat, DA flat at a high level (nothing left to gain)
+  monitor.add_metric(ErrorCalculation::type::rmse, 0.2);
+  monitor.add_metric(ErrorCalculation::type::rmse, 0.2);
+  monitor.add_metric(ErrorCalculation::type::rmse, 0.2); // slope: 0.0
+
   monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.8);
   monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.8);
   monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.8); // slope: 0.0
 
-  // Score: 0.0, which is < 0.01, so it should be Stuck
+  // Score: 0.0, which is < 0.01, but DA 0.8 >= default converged threshold (0.70), so it should be Converged
+  EXPECT_EQ(monitor.evaluate(), TrainingMonitor::TrainingStatus::Converged);
+}
+
+TEST(TrainingMonitorTest, StatusConvergedWithTinyLossImprovement)
+{
+  TrainingMonitor monitor(3, 0.6, 0.4, 0.52, 1e-3);
+
+  // Mirrors a real plateaued layer: loss creeping down, DA pinned near 99.8%
+  monitor.add_metric(ErrorCalculation::type::huber_direction_loss, 0.0144);
+  monitor.add_metric(ErrorCalculation::type::huber_direction_loss, 0.0142);
+  monitor.add_metric(ErrorCalculation::type::huber_direction_loss, 0.0141);
+
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.9981);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.9981);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.9981);
+
+  EXPECT_EQ(monitor.evaluate(), TrainingMonitor::TrainingStatus::Converged);
+}
+
+TEST(TrainingMonitorTest, StatusConvergedRespectsCustomThreshold)
+{
+  // Same flat 0.8 DA, but with the converged threshold raised to 0.9 it is only Stuck
+  TrainingMonitor monitor(3, 0.5, 0.5, 0.5, 1e-3, 0.9);
+
+  monitor.add_metric(ErrorCalculation::type::rmse, 0.2);
+  monitor.add_metric(ErrorCalculation::type::rmse, 0.2);
+  monitor.add_metric(ErrorCalculation::type::rmse, 0.2);
+
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.8);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.8);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.8);
+
   EXPECT_EQ(monitor.evaluate(), TrainingMonitor::TrainingStatus::Stuck);
+}
+
+TEST(TrainingMonitorTest, StatusDivergingTakesPrecedenceOverConverged)
+{
+  TrainingMonitor monitor(3, 0.5, 0.5, 0.5, 1e-3);
+
+  // DA high but loss getting worse: must still be Diverging, never Converged
+  monitor.add_metric(ErrorCalculation::type::rmse, 0.1);
+  monitor.add_metric(ErrorCalculation::type::rmse, 0.2);
+  monitor.add_metric(ErrorCalculation::type::rmse, 0.3);
+
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.95);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.95);
+  monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.95);
+
+  EXPECT_EQ(monitor.evaluate(), TrainingMonitor::TrainingStatus::Diverging);
+}
+
+TEST(TrainingMonitorTest, CopyAndMovePreserveConvergedThreshold)
+{
+  TrainingMonitor monitor(3, 0.5, 0.5, 0.5, 1e-3, 0.9);
+  for (int i = 0; i < 3; ++i)
+  {
+    monitor.add_metric(ErrorCalculation::type::rmse, 0.2);
+    monitor.add_metric(ErrorCalculation::type::directional_accuracy, 0.8);
+  }
+
+  TrainingMonitor copy_monitor(monitor);
+  EXPECT_EQ(copy_monitor.evaluate(), TrainingMonitor::TrainingStatus::Stuck);
+
+  TrainingMonitor copy_assign;
+  copy_assign = copy_monitor;
+  EXPECT_EQ(copy_assign.evaluate(), TrainingMonitor::TrainingStatus::Stuck);
+
+  TrainingMonitor move_monitor(std::move(copy_monitor));
+  EXPECT_EQ(move_monitor.evaluate(), TrainingMonitor::TrainingStatus::Stuck);
+
+  TrainingMonitor move_assign;
+  move_assign = std::move(move_monitor);
+  EXPECT_EQ(move_assign.evaluate(), TrainingMonitor::TrainingStatus::Stuck);
 }
 
 TEST(TrainingMonitorTest, StatusDivergingWithHuberDirectionLoss)
@@ -163,5 +252,6 @@ TEST(TrainingMonitorTest, StatusToString)
   EXPECT_STREQ(TrainingMonitor::monitor_status_to_string(TrainingMonitor::TrainingStatus::OnTrack), "on-track");
   EXPECT_STREQ(TrainingMonitor::monitor_status_to_string(TrainingMonitor::TrainingStatus::Stuck), "stuck");
   EXPECT_STREQ(TrainingMonitor::monitor_status_to_string(TrainingMonitor::TrainingStatus::Diverging), "diverging");
+  EXPECT_STREQ(TrainingMonitor::monitor_status_to_string(TrainingMonitor::TrainingStatus::Converged), "converged");
   EXPECT_STREQ(TrainingMonitor::monitor_status_to_string(static_cast<TrainingMonitor::TrainingStatus>(99)), "unknown");
 }

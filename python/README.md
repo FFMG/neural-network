@@ -82,10 +82,10 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
 
 ### Functions and Classes
 
-*   `nn.__version__`: Library and bindings semantic version string (e.g. `"0.0.72"`).
+*   `nn.__version__`: Library and bindings semantic version string (e.g. `"0.0.73"`).
 *   `nn.Version`: Compile-time version information.
     *   Properties: `major` (int), `minor` (int), `patch` (int), `code` (int), `string` (str).
-    *   `__repr__()`: Formatted representation string (e.g. `<Version 0.0.72>`).
+    *   `__repr__()`: Formatted representation string (e.g. `<Version 0.0.73>`).
 *   `nn.Logger`: Global logging interface.
     *   `set_level(level)`: Sets the current logging level.
     *   `get_level()`: Returns the current logging level.
@@ -100,10 +100,10 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `EvaluationConfig(neutral_tolerance, confidence_threshold, huber_delta, direction_lambda, use_direction_penalty, cross_entropy_lambda, epsilon, label_smoothing, quantiles, transaction_cost_penalty, sortino_target_return)`: Constructor.
     *   Properties: `neutral_tolerance`, `confidence_threshold`, `huber_delta`, `direction_lambda`, `use_direction_penalty`, `cross_entropy_lambda`, `epsilon`, `label_smoothing`, `quantiles`, `transaction_cost_penalty`, `sortino_target_return` (all read-only).
 *   `nn.LayerDetails`: Specifications for configuring a hidden layer.
-    *   `LayerDetails(architecture, size, activation, dropout, weight_decay, optimiser_type, momentum, use_layer_normalisation=False, attention_hidden_size=0, kernel_size=0, dilation=0, number_of_heads=0, feed_forward_hidden_size=0, vocabulary_size=0, embedding_dimension=0)`: Constructor. `use_layer_normalisation` enables recurrent-state Layer Normalization (see "Layer Normalization" below) and is valid for `Gru`/`Lstm` architectures, `SelfAttention`, and `Grn` (see "Gated Residual Network (GRN)" below). `attention_hidden_size` sets the internal scoring-projection width for `AttentionPool` layers (see "Attention Pooling" below) and must be non-zero exactly when `architecture` is `AttentionPool`. `kernel_size`/`dilation` configure a `Tcn` layer's dilated causal convolution (see "TCN" below) and must both be non-zero exactly when `architecture` is `Tcn`. `number_of_heads`/`feed_forward_hidden_size` configure a `SelfAttention` layer's multi-head attention block and must both be non-zero exactly when `architecture` is `SelfAttention`. `feed_forward_hidden_size` also configures the intermediate dense expansion size for `Grn` layers. `vocabulary_size`/`embedding_dimension` configure an `Embedding` layer's discrete categorical entity lookup table (see "Embedding" below).
+    *   `LayerDetails(architecture, size, activation, dropout, weight_decay, optimiser_type, momentum, use_layer_normalisation=False, attention_hidden_size=0, kernel_size=0, dilation=0, number_of_heads=0, feed_forward_hidden_size=0, vocabulary_size=0, embedding_dimension=0)`: Constructor. `use_layer_normalisation` enables Layer Normalization (recurrent-state for `Gru`/`Lstm`, see "Layer Normalization" below; pre-activation for `FF`) and is valid for `FF`, `Gru` and `Lstm` architectures, `SelfAttention`, and `Grn` (see "Gated Residual Network (GRN)" below). `attention_hidden_size` sets the internal scoring-projection width for `AttentionPool` layers (see "Attention Pooling" below) and must be non-zero exactly when `architecture` is `AttentionPool`. `kernel_size`/`dilation` configure a `Tcn` layer's dilated causal convolution (see "TCN" below) and must both be non-zero exactly when `architecture` is `Tcn`. `number_of_heads`/`feed_forward_hidden_size` configure a `SelfAttention` layer's multi-head attention block and must both be non-zero exactly when `architecture` is `SelfAttention`. `feed_forward_hidden_size` also configures the intermediate dense expansion size for `Grn` layers. `vocabulary_size`/`embedding_dimension` configure an `Embedding` layer's discrete categorical entity lookup table (see "Embedding" below).
     *   Properties: `architecture`, `size`, `activation`, `dropout`, `weight_decay`, `optimiser_type`, `momentum`, `use_layer_normalisation`, `attention_hidden_size`, `kernel_size`, `dilation`, `number_of_heads`, `feed_forward_hidden_size`, `vocabulary_size`, `embedding_dimension`, `is_recurrent` (all read-only).
     *   Static Factory Methods:
-        *   `create_ff(size, activation, dropout=0.0, weight_decay=0.0, optimiser_type=None_, momentum=0.0)`
+        *   `create_ff(size, activation, dropout=0.0, weight_decay=0.0, optimiser_type=None_, momentum=0.0, use_layer_normalisation=False)`
         *   `create_elman(size, activation, dropout=0.0, weight_decay=0.0, optimiser_type=None_, momentum=0.0)`
         *   `create_gru(size, activation, dropout=0.0, weight_decay=0.0, optimiser_type=None_, momentum=0.0, use_layer_normalisation=False)`
         *   `create_lstm(size, activation, dropout=0.0, weight_decay=0.0, optimiser_type=None_, momentum=0.0, use_layer_normalisation=False)`
@@ -144,7 +144,7 @@ The Python bindings expose the C++ API in a clean, Pythonic wrapper inside the `
     *   `build()`: Finalises and returns the immutable options object.
 *   `nn.NeuralNetwork`: Core neural network model.
     *   `NeuralNetwork(options)`: Constructor.
-    *   `version()`: Static method returning the library version string (e.g. `"0.0.72"`).
+    *   `version()`: Static method returning the library version string (e.g. `"0.0.73"`).
     *   `loaded_version`: Read-only property returning the serialised library version if the model was loaded from a file via `NeuralNetworkSerializer`, or `""` if created in memory.
     *   `train(inputs, outputs)`: Runs supervised training on the provided datasets.
     *   `train_with_advantages(training_inputs, training_action_targets, training_advantages)`: Runs reward-weighted / policy-gradient (REINFORCE) training. Scales output-layer gradients by scalar advantages before hidden-layer backpropagation runs. When `with_entropy_coefficient(beta)` is configured (> 0.0) with a Softmax output layer, an entropy bonus $\beta \cdot p_k (\ln p_k + H)$ is added to prevent premature policy collapse and encourage exploration. Reuses pre-allocated training workspaces, thread-local `TempBuffer` scratchpads, persistent layer scratch workspaces (`GrnLayer`, `SelfAttentionLayer`, `AttentionPoolLayer`), lazy transposed feed-forward weights, and stack-cached log-probabilities across batches and consecutive updates.

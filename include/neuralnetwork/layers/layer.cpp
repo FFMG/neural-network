@@ -35,10 +35,6 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
   switch (ld.get_layer_architecture())
   {
   case Layer::Architecture::FF:
-    if (ld.get_use_layer_normalisation())
-    {
-      Logger::panic("LayerNorm (use_layer_normalisation) is only supported for Gru/Lstm hidden layers, not FF.");
-    }
     return std::make_unique<FFLayer>(
       layer_index,
       number_input_neurons,
@@ -53,13 +49,14 @@ std::unique_ptr<Layer> Layer::create_hidden_layer(
       number_of_threads,
       has_bias,
       ld.get_momentum(),
+      ld.get_use_layer_normalisation(),
       seed
     );
 
   case Layer::Architecture::Elman:
     if (ld.get_use_layer_normalisation())
     {
-      Logger::panic("LayerNorm (use_layer_normalisation) is only supported for Gru/Lstm hidden layers, not Elman.");
+      Logger::panic("LayerNorm (use_layer_normalisation) is not supported for Elman hidden layers.");
     }
     return std::make_unique<ElmanRNNLayer>(
       layer_index,

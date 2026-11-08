@@ -1,7 +1,7 @@
 # neural-network
 
 [![CI](https://github.com/FFMG/neural-network/actions/workflows/tests.yml/badge.svg)](https://github.com/FFMG/neural-network/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/version-0.0.72-blue.svg)](include/neuralnetwork/version.h)
+[![Version](https://img.shields.io/badge/version-0.0.73-blue.svg)](include/neuralnetwork/version.h)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![C++](https://img.shields.io/badge/C%2B%2B-17%20%2F%2020-00599C?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/17)
 [![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)](python/)
@@ -315,7 +315,7 @@ The seed is opt-in and fully backward compatible: `with_seed(std::nullopt)` (the
 
 ### Layer Normalization
 
-`Gru` and `Lstm` hidden layers can opt into recurrent-state Layer Normalization via the trailing `use_layer_normalisation` flag on `LayerDetails` (`false` when disabled, `true` when enabled). It normalizes the state each layer actually carries across timesteps — the blended hidden state for `Gru`, the cell state for `Lstm` — with its own learnable per-neuron gain (initialized to `1.0`) and bias (initialized to `0.0`), targeting the unstable activation scale that recurrent nets can build up over a long BPTT window. It is not available on `FF`/`Elman` layers. The flag, like the rest of a hidden layer's configuration, is persisted by `NeuralNetworkSerializer::save`/`load`, along with the trained gain/bias values.
+`Gru` and `Lstm` hidden layers can opt into recurrent-state Layer Normalization via the trailing `use_layer_normalisation` flag on `LayerDetails` (`false` when disabled, `true` when enabled). It normalizes the state each layer actually carries across timesteps — the blended hidden state for `Gru`, the cell state for `Lstm` — with its own learnable per-neuron gain (initialized to `1.0`) and bias (initialized to `0.0`), targeting the unstable activation scale that recurrent nets can build up over a long BPTT window. `FF` hidden layers accept the same flag and normalise their pre-activations (after any residual is added, before the activation function), also with a learnable per-neuron gain and bias. It is not available on `Elman` layers. The flag, like the rest of a hidden layer's configuration, is persisted by `NeuralNetworkSerializer::save`/`load`, along with the trained gain/bias values.
 
 ```cpp
     LayerDetails hl(Layer::Architecture::Gru, 32, activation(activation::method::tanh, 0.0), 0.0, 0.01, OptimiserType::AdamW, 0.95, true, 0, 0, 0, 0, 0, 0, 0); // Layer Normalisation enabled
@@ -611,7 +611,7 @@ The library follows Semantic Versioning (`MAJOR.MINOR.PATCH`). Version metadata 
 
 *   **Preprocessor Macros (`version.h`):**
     *   `NEURALNETWORK_VERSION_MAJOR`, `NEURALNETWORK_VERSION_MINOR`, `NEURALNETWORK_VERSION_PATCH`
-    *   `NEURALNETWORK_VERSION_STRING` (e.g. `"0.0.72"`)
+    *   `NEURALNETWORK_VERSION_STRING` (e.g. `"0.0.73"`)
     *   `NEURALNETWORK_VERSION_CODE` (e.g. `((MAJOR << 16) | (MINOR << 8) | PATCH)` for compile-time `#if` checks)
 *   **C++ Type-Safe API:**
     *   `Version::string()` and `NeuralNetwork::version()` return the library version string.

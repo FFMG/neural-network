@@ -2,6 +2,25 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
+## [0.0.73] - 2026-11-08
+
+### Added
+- Layer normalisation for `FF` hidden layers ([`include/neuralnetwork/layers/fflayer.h`](./include/neuralnetwork/layers/fflayer.h)), enabled through the existing `use_layer_normalisation` flag on `LayerDetails`, which previously panicked for `FF`:
+  - Pre-activations are normalised after any residual is added and before the activation function, with a learnable per-neuron gain (initialised to `1.0`) and bias (initialised to `0.0`).
+  - Gain and bias take part in gradient clipping, Stochastic Weight Averaging and Lookahead, and are persisted by `NeuralNetworkSerializer` under `use-layer-normalisation`, `ln-gain-*` and `ln-bias-*`. Models saved without those keys still load, with layer normalisation disabled.
+  - Python: `LayerDetails.create_ff` now accepts `use_layer_normalisation` (default `False`).
+- `TrainingMonitor::TrainingStatus::Converged` ([`include/neuralnetwork/helpers/trainingmonitor.h`](./include/neuralnetwork/helpers/trainingmonitor.h)), reported as `"converged"` by `monitor_status_to_string()`:
+  - Returned when the trend score is in `[0, 0.01)` (not diverging, no meaningful improvement) and the latest directional accuracy (DA) is at or above the new `converged_da_threshold` constructor argument (default `0.70`).
+  - The same flat trend below that threshold is still `Stuck`, as is any DA below `da_threshold`; `Diverging` still takes precedence.
+  - Previously a layer that had plateaued at a high DA (e.g. 99.8%) was reported as `Stuck`.
+
+### Fixed
+- `GRURNNLayer` no longer copies uninitialised scratch memory into the unused part of the LayerNorm `inv_std` block of its hidden states, which made `NoBatchCrossTalkLayerNorm*` depend on test order. Results and gradients are unaffected.
+
+### Tests
+- Added `FF` layer normalisation coverage: forward pass, residual ordering, numerical gradient checks for weights, biases, gain and bias (single and multiple time steps), batch averaging, gradient norm, optimiser updates, copy/move/clone in [`tests/fflayer_tests.cpp`](./tests/fflayer_tests.cpp); single-threaded versus multi-threaded consistency in [`tests/fflayer_mt_tests.cpp`](./tests/fflayer_mt_tests.cpp); end-to-end training, Lookahead with Stochastic Weight Averaging, and save/load in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp). `CreateHiddenLayerAcceptsLayerNormOnFFGruAndLstm` and `CreateHiddenLayerRejectsLayerNormOnElman` in [`tests/layer_tests.cpp`](./tests/layer_tests.cpp) replace the previous `FF` rejection test.
+- Added `StatusConvergedWhenFlatAtHighAccuracy`, `StatusConvergedWithTinyLossImprovement`, `StatusConvergedRespectsCustomThreshold`, `StatusDivergingTakesPrecedenceOverConverged` and `CopyAndMovePreserveConvergedThreshold`, and extended `StatusToString`, in [`tests/trainingmonitor_tests.cpp`](./tests/trainingmonitor_tests.cpp); `StatusStuckDueToLowScore` now uses a flat DA of 0.6 so it stays below the converged threshold.
+
 ## [0.0.72] - 2026-10-17
 
 ### Optimised

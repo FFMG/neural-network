@@ -514,22 +514,22 @@ TEST(LayerTest, LayersSetNumberOfThreads) {
     EXPECT_NO_THROW(layers.set_number_of_threads(1));
 }
 
-TEST(LayerTest, CreateHiddenLayerRejectsLayerNormOnFFAndElman) {
+TEST(LayerTest, CreateHiddenLayerRejectsLayerNormOnElman) {
     activation act(activation::method::tanh, 0.0, 1.0);
-
-    LayerDetails ff_with_ln(Layer::Architecture::FF, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0);
-    EXPECT_THROW(Layer::create_hidden_layer(1, 3, ff_with_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
 
     LayerDetails elman_with_ln(Layer::Architecture::Elman, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0);
     EXPECT_THROW(Layer::create_hidden_layer(1, 3, elman_with_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt), std::runtime_error);
 
-    // Same architectures without the flag are unaffected.
-    LayerDetails ff_without_ln(Layer::Architecture::FF, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
-    EXPECT_NO_THROW(Layer::create_hidden_layer(1, 3, ff_without_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt));
+    // Same architecture without the flag is unaffected.
+    LayerDetails elman_without_ln(Layer::Architecture::Elman, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, false, 0, 0, 0, 0, 0, 0, 0);
+    EXPECT_NO_THROW(Layer::create_hidden_layer(1, 3, elman_without_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt));
 }
 
-TEST(LayerTest, CreateHiddenLayerAcceptsLayerNormOnGruAndLstm) {
+TEST(LayerTest, CreateHiddenLayerAcceptsLayerNormOnFFGruAndLstm) {
     activation act(activation::method::tanh, 0.0, 1.0);
+
+    LayerDetails ff_with_ln(Layer::Architecture::FF, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0);
+    EXPECT_NO_THROW(Layer::create_hidden_layer(1, 3, ff_with_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt));
 
     LayerDetails gru_with_ln(Layer::Architecture::Gru, 4, act, 0.0, 0.0, OptimiserType::Adam, 0.9, true, 0, 0, 0, 0, 0, 0, 0);
     EXPECT_NO_THROW(Layer::create_hidden_layer(1, 3, gru_with_ln, 1, true, Layer::Architecture::None, -1, nullptr, std::nullopt));

@@ -106,6 +106,16 @@ public:
     return _pre_activation_sums[index];
   }
 
+  [[nodiscard]] inline double get_pre_activation_sum(unsigned index) const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("HiddenState");
+    if (index >= _pre_activation_sums.size())
+    {
+       return 0.0;
+    }
+    return _pre_activation_sums[index];
+  }
+
   [[nodiscard]] inline std::span<double> get_pre_activation_sums() const noexcept
   {
     MYODDWEB_PROFILE_FUNCTION("HiddenState");

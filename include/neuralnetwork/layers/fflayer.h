@@ -26,6 +26,38 @@ public:
     int number_of_threads,
     bool has_bias,
     double momentum,
+    bool use_layer_normalisation,
+    std::optional<uint32_t> seed);
+
+  FFLayer(unsigned layer_index,
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
+    double weight_decay,
+    const Role layer_role,
+    const activation& activation_method,
+    const OptimiserType& optimiser_type,
+    int residual_layer_number,
+    double dropout_rate,
+    ResidualProjector* residual_projector,
+    int number_of_threads,
+    bool has_bias,
+    double momentum,
+    std::optional<uint32_t> seed);
+
+  FFLayer(unsigned layer_index,
+    unsigned num_neurons_in_previous_layer,
+    unsigned num_neurons_in_this_layer,
+    const std::vector<double>& weight_decays,
+    const Role layer_role,
+    const activation& activation_method,
+    const OptimiserType& optimiser_type,
+    int residual_layer_number,
+    double dropout_rate,
+    ResidualProjector* residual_projector,
+    int number_of_threads,
+    bool has_bias,
+    double momentum,
+    bool use_layer_normalisation,
     std::optional<uint32_t> seed);
 
   FFLayer(unsigned layer_index,
@@ -42,6 +74,49 @@ public:
     bool has_bias,
     double momentum,
     std::optional<uint32_t> seed);
+
+  FFLayer(
+    unsigned layer_index,
+    const Role layer_role,
+    const OptimiserType optimiser_type,
+    int residual_layer_number,
+    unsigned number_input_neurons,
+    unsigned number_output_neurons,
+    const std::vector<Neuron>& neurons,
+    const std::vector<double>& w_values,
+    const std::vector<double>& w_grads,
+    const std::vector<double>& w_velocities,
+    const std::vector<double>& w_m1,
+    const std::vector<double>& w_m2,
+    const std::vector<long long>& w_timesteps,
+    const std::vector<double>& w_decays,
+    const std::vector<double>& b_values,
+    const std::vector<double>& b_grads,
+    const std::vector<double>& b_velocities,
+    const std::vector<double>& b_m1,
+    const std::vector<double>& b_m2,
+    const std::vector<long long>& b_timesteps,
+    const std::vector<double>& b_decays,
+    bool use_layer_normalisation,
+    const std::vector<double>& ln_gain_values,
+    const std::vector<double>& ln_gain_grads,
+    const std::vector<double>& ln_gain_velocities,
+    const std::vector<double>& ln_gain_m1,
+    const std::vector<double>& ln_gain_m2,
+    const std::vector<long long>& ln_gain_timesteps,
+    const std::vector<double>& ln_gain_decays,
+    const std::vector<double>& ln_bias_values,
+    const std::vector<double>& ln_bias_grads,
+    const std::vector<double>& ln_bias_velocities,
+    const std::vector<double>& ln_bias_m1,
+    const std::vector<double>& ln_bias_m2,
+    const std::vector<long long>& ln_bias_timesteps,
+    const std::vector<double>& ln_bias_decays,
+    const ResidualProjector* residual_projector,
+    int number_of_threads,
+    const layer_activation_helper& lah,
+    double momentum
+  ) noexcept;
 
   FFLayer(
     unsigned layer_index,
@@ -90,16 +165,26 @@ public:
   {
     AlignedVector w_grads;
     AlignedVector b_grads;
+    AlignedVector ln_gain_grads;
+    AlignedVector ln_bias_grads;
   };
 
   // Multiplier = 1: Standard pre-activation sum (z)
   static constexpr unsigned Multiplier = 1;
+  static constexpr unsigned LayerNormMultiplier = Multiplier + 1;
   static constexpr unsigned GateCount = 1;
+  static constexpr double LayerNormEpsilon = 1e-5;
 
   [[nodiscard]] unsigned get_pre_activation_multiplier() const noexcept override
   {
     MYODDWEB_PROFILE_FUNCTION("FFLayer");
-    return Multiplier;
+    return _use_layer_normalisation ? LayerNormMultiplier : Multiplier;
+  }
+
+  [[nodiscard]] inline bool get_use_layer_normalisation() const noexcept
+  {
+    MYODDWEB_PROFILE_FUNCTION("FFLayer");
+    return _use_layer_normalisation;
   }
 
   [[nodiscard]] inline const std::vector<thread_ff_grad_accumulators>& get_thread_grad_accumulators() const noexcept
@@ -107,6 +192,25 @@ public:
     MYODDWEB_PROFILE_FUNCTION("FFLayer");
     return _thread_grad_accumulators;
   }
+
+  // LayerNorm accessors for serialization
+  [[nodiscard]] inline const std::vector<double>& get_ln_gain_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_gain_values; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_gain_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_gain_grads; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_gain_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_gain_velocities; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_gain_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_gain_m1; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_gain_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_gain_m2; }
+  [[nodiscard]] inline const std::vector<long long>& get_ln_gain_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_gain_timesteps; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_gain_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_gain_decays; }
+  inline void set_ln_gain_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("FFLayer"); _ln_gain_values = v; }
+
+  [[nodiscard]] inline const std::vector<double>& get_ln_bias_values() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_bias_values; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_bias_grads() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_bias_grads; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_bias_velocities() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_bias_velocities; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_bias_m1() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_bias_m1; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_bias_m2() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_bias_m2; }
+  [[nodiscard]] inline const std::vector<long long>& get_ln_bias_timesteps() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_bias_timesteps; }
+  [[nodiscard]] inline const std::vector<double>& get_ln_bias_decays() const noexcept { MYODDWEB_PROFILE_FUNCTION("FFLayer"); return _ln_bias_decays; }
+  inline void set_ln_bias_values(const std::vector<double>& v) { MYODDWEB_PROFILE_FUNCTION("FFLayer"); _ln_bias_values = v; }
 
 public:
   void calculate_forward_feed(
@@ -171,7 +275,9 @@ public:
     const double* next_grads_ptr,
     double* this_grads_ptr,
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
-    const std::vector<HiddenStates>& batch_hidden_states) const;
+    const std::vector<HiddenStates>& batch_hidden_states,
+    std::span<double> local_ln_gain_grads = {},
+    std::span<double> local_ln_bias_grads = {}) const;
 
   void run_post_gemm_backward(
     size_t start,
@@ -179,7 +285,9 @@ public:
     size_t N_this,
     std::vector<GradientsAndOutputs>& batch_gradients_and_outputs,
     const std::vector<HiddenStates>& batch_hidden_states,
-    const double* flattened_this_grads) const;
+    const double* flattened_this_grads,
+    std::span<double> local_ln_gain_grads = {},
+    std::span<double> local_ln_bias_grads = {}) const;
 
   void calculate_and_store_gradients_chunk(
     size_t start,
@@ -229,7 +337,23 @@ protected:
     int number_of_threads,
     bool has_bias,
     double momentum,
+    bool use_layer_normalisation,
     std::optional<uint32_t> seed);
+
+  FFLayer(unsigned layer_index,
+    const std::vector<double>& weight_decays,
+    const Role layer_role,
+    const layer_activation_helper& lah,
+    const OptimiserType& optimiser_type,
+    int residual_layer_number,
+    double dropout_rate,
+    ResidualProjector* residual_projector,
+    int number_of_threads,
+    bool has_bias,
+    double momentum,
+    std::optional<uint32_t> seed);
+
+  void initialize_layer_norm();
 
   void run_gemm(
     size_t b_start,
@@ -295,6 +419,24 @@ private:
     const double* W_next_T,
     const double* flattened_next_grads,
     double* flattened_this_grads) const;
+
+  bool _use_layer_normalisation = false;
+
+  std::vector<double> _ln_gain_values;
+  mutable std::vector<double> _ln_gain_grads;
+  std::vector<double> _ln_gain_velocities;
+  std::vector<double> _ln_gain_m1;
+  std::vector<double> _ln_gain_m2;
+  mutable std::vector<long long> _ln_gain_timesteps;
+  std::vector<double> _ln_gain_decays;
+
+  std::vector<double> _ln_bias_values;
+  mutable std::vector<double> _ln_bias_grads;
+  std::vector<double> _ln_bias_velocities;
+  std::vector<double> _ln_bias_m1;
+  std::vector<double> _ln_bias_m2;
+  mutable std::vector<long long> _ln_bias_timesteps;
+  std::vector<double> _ln_bias_decays;
 
   mutable std::vector<thread_ff_grad_accumulators> _thread_grad_accumulators;
   mutable AlignedVector _w_values_T;
