@@ -39,18 +39,7 @@ namespace math_expect {
   }
 
   double rmse(const std::vector<std::vector<double>>& gt, const std::vector<std::vector<double>>& pred) {
-    double total_rmse = 0.0;
-    size_t seq_count = 0;
-    for (size_t i = 0; i < gt.size(); ++i) {
-      double seq_mse = 0.0;
-      for (size_t j = 0; j < gt[i].size(); ++j) {
-        double diff = gt[i][j] - pred[i][j];
-        seq_mse += diff * diff;
-      }
-      total_rmse += std::sqrt(seq_mse / gt[i].size());
-      ++seq_count;
-    }
-    return seq_count == 0 ? 0.0 : total_rmse / seq_count;
+    return std::sqrt(mse(gt, pred));
   }
 
   double nrmse(const std::vector<std::vector<double>>& gt, const std::vector<std::vector<double>>& pred, double eps = 1e-12) {
@@ -701,11 +690,16 @@ TEST_F(ErrorCalculationTest, HandCalculatedAnalyticalProofs)
   EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_mse_error(gt1, pred1), 4.5);
 
   // 2. RMSE on deterministic sequence
-  // Seq 0 MSE = (1 + 4)/2 = 2.5 -> RMSE_0 = sqrt(2.5)
-  // Seq 1 MSE = (4 + 9)/2 = 6.5 -> RMSE_1 = sqrt(6.5)
-  // Avg RMSE = (sqrt(2.5) + sqrt(6.5)) / 2.0
-  const double expected_rmse = (std::sqrt(2.5) + std::sqrt(6.5)) / 2.0;
+  // Global MSE = (1 + 4 + 4 + 9) / 4 = 4.5 -> RMSE = sqrt(4.5)
+  const double expected_rmse = std::sqrt(4.5);
   EXPECT_NEAR(ErrorCalculation::calculate_rmse_error(gt1, pred1), expected_rmse, 1e-12);
+
+  // 2b. Single-output RMSE must not collapse to MAE
+  // Errors: [0.0, 2.0] -> MAE = 1.0, RMSE = sqrt((0 + 4) / 2) = sqrt(2.0)
+  std::vector<std::vector<double>> gt_single = { { 0.0 }, { 0.0 } };
+  std::vector<std::vector<double>> pred_single = { { 0.0 }, { 2.0 } };
+  EXPECT_DOUBLE_EQ(ErrorCalculation::calculate_mae_error(gt_single, pred_single), 1.0);
+  EXPECT_NEAR(ErrorCalculation::calculate_rmse_error(gt_single, pred_single), std::sqrt(2.0), 1e-12);
 
   // 3. Huber Loss with Delta = 1.0
   // GT: [[0.0], [0.0]]

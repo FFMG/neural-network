@@ -752,8 +752,8 @@ public:
   static double calculate_rmse_error(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
   {
     MYODDWEB_PROFILE_FUNCTION("ErrorCalculation");
-    double total_rmse = 0.0;
-    size_t sequence_count = 0;
+    double total_squared_error = 0.0;
+    size_t total_count = 0;
 
     for (size_t seq_idx = 0; seq_idx < ground_truths.size(); ++seq_idx)
     {
@@ -769,19 +769,15 @@ public:
       const double* pred_ptr = pred.data();
       const size_t vec_len = gt.size();
 
-      double mse = 0.0;
       for (size_t i = 0; i < vec_len; ++i)
       {
         const double diff = gt_ptr[i] - pred_ptr[i];
-        mse += diff * diff;
+        total_squared_error += diff * diff;
+        ++total_count;
       }
-
-      mse /= static_cast<double>(vec_len);
-      total_rmse += std::sqrt(mse);
-      ++sequence_count;
     }
 
-    return (sequence_count == 0) ? 0.0 : (total_rmse / static_cast<double>(sequence_count));
+    return (total_count == 0) ? 0.0 : std::sqrt(total_squared_error / static_cast<double>(total_count));
   }
 
   static double calculate_nrmse_error(std::span<const std::vector<double>> ground_truths, std::span<const std::vector<double>> predictions)
