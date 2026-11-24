@@ -11,6 +11,9 @@ All notable changes to the `neural-network` library will be documented in this f
   - Now accumulates total squared error globally across all samples and computes $\sqrt{\frac{\sum (y - \hat{y})^2}{N_{total}}}$, maintaining mathematical consistency across both multi-output and single-output evaluation modes.
 - Updated analytical proofs and unit tests in [`tests/error_calculation_tests.cpp`](./tests/error_calculation_tests.cpp) to verify global RMSE and guarantee single-output RMSE does not collapse to MAE.
 
+### Tests
+- Updated `NetworkIntegrationTest.VersionMatchesTopChangelogEntry` in [`tests/network_integration_tests.cpp`](./tests/network_integration_tests.cpp) to skip `[Unreleased]` entries and match the latest release version against `Version::string()`.
+
 ## [0.0.73] - 2026-11-08
 
 ### Added

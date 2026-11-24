@@ -3001,8 +3001,12 @@ TEST(NetworkIntegrationTest, VersionMatchesTopChangelogEntry)
         auto end = line.find(']', start + 4);
         if (end != std::string::npos)
         {
-          changelog_version = line.substr(start + 4, end - (start + 4));
-          break;
+          const auto version = line.substr(start + 4, end - (start + 4));
+          if (version != "Unreleased")
+          {
+            changelog_version = version;
+            break;
+          }
         }
       }
     }
