@@ -2,9 +2,10 @@
 
 All notable changes to the `neural-network` library will be documented in this file.
 
-## [Unreleased] - 2026-11-23
+## [Unreleased] - 2026-11-24
 
 ### Fixed
+- Suppressed MSVC warning C4834 (`discarding return value of function with [[nodiscard]] attribute`) in `TinyJSON::get_whole_number_from_float` ([`include/neuralnetwork/libraries/TinyJSON.cpp`](./include/neuralnetwork/libraries/TinyJSON.cpp)) by explicitly casting the `std::modf` return value to `void`, resolving CI build failures on newer MSVC toolsets where `<cmath>` functions are marked `[[nodiscard]]`.
 - Fixed single-output RMSE calculation in `ErrorCalculation::calculate_rmse_error` ([`include/neuralnetwork/helpers/errorcalculation.h`](./include/neuralnetwork/helpers/errorcalculation.h)):
   - Previously, `calculate_rmse_error` averaged intermediate per-sequence root-mean-squared values ($\frac{1}{N}\sum \sqrt{\text{MSE}_k}$), which for 1D single-output targets collapsed algebraically to Mean Absolute Error (MAE) instead of Root Mean Squared Error.
   - Now accumulates total squared error globally across all samples and computes $\sqrt{\frac{\sum (y - \hat{y})^2}{N_{total}}}$, maintaining mathematical consistency across both multi-output and single-output evaluation modes.

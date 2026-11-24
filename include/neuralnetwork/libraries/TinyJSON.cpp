@@ -2778,7 +2778,7 @@ namespace TinyJSON
     {
       value = std::abs(value);
       long double int_part;
-      std::modf(value, &int_part);
+      (void)std::modf(value, &int_part);
       // we know it is not negative
       return static_cast<unsigned long long>(int_part);
     }
